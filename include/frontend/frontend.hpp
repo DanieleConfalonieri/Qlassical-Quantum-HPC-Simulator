@@ -167,6 +167,42 @@ namespace qlassical {
         [[nodiscard]] bool        empty()           const noexcept { return metadata.empty(); }
     };
 
+    // ----------------------------------------------
+    // IRModule — Intermediate program representation
+    // ----------------------------------------------
+    //
+    // Owns both the hot (GateInstr) and cold (UnitaryPool) data.
+
+    struct IRModule {
+        uint32_t                num_qubits = 0;
+        std::vector<GateInstr>  gate_stream;           // hot: linear instruction stream
+        UnitaryPool             unitary_pool;   // cold: custom matrices
+
+        IRModule() = default;
+
+        explicit IRModule(uint32_t nq, std::size_t gate_hint = 256)
+            : num_qubits(nq)
+        {
+            gate_stream.reserve(gate_hint);
+        }
+
+        // Move-only semantics; allow only move, no deep copy
+        IRModule(IRModule&&) noexcept = default;
+        IRModule& operator=(IRModule&&) noexcept = default;
+        IRModule(const IRModule&) = delete;
+        IRModule& operator=(const IRModule&) = delete;
+
+        // Span accessors for compiler passes -> safe access
+        [[nodiscard]] std::span<const GateInstr> program()  const noexcept { return gate_stream; }
+        [[nodiscard]] std::span<GateInstr>       program()        noexcept { return gate_stream; }
+
+        [[nodiscard]] const UnitaryPool& unitaries() const noexcept { return unitary_pool; }
+        [[nodiscard]] UnitaryPool&       unitaries()       noexcept { return unitary_pool; }
+
+        // Query 
+        [[nodiscard]] std::size_t gate_count() const noexcept { return gate_stream.size(); }
+        [[nodiscard]] bool        empty()      const noexcept { return gate_stream.empty(); }
+    };
 }
 
 #endif // QLASSICAL_FRONTEND_HPP
