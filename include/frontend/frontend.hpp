@@ -64,8 +64,7 @@ namespace qlassical {
     //   Byte  1     : uint8_t       arity       (1B)
     //   Byte  2     : uint8_t       flags       (1B)
     //   Byte  3     : uint8_t       _pad0       (1B)
-    //   Byte  4–9   : int16_t[3]    qubits      (6B)
-    //   Byte 10–11  : uint16_t      _pad1       (2B)
+    //   Byte  4–11  : int16_t[4]    qubits      (8B)
     //   Byte 12–23  : float[3]      params      (12B)
     //   Byte 24–27  : uint32_t      matrix_idx  (4B)
     //   Byte 28–31  : uint32_t      uid         (4B)
@@ -73,18 +72,20 @@ namespace qlassical {
     // Total: 32 bytes. Two fit in a cache line.
     // The Middle-End iterates this linearly -> prefetching.
 
+    // Special value for "no matrix" 
+    inline constexpr uint32_t NO_MATRIX = UINT32_MAX;
+
     struct alignas(32) GateInstr {
         GateType  type       = GateType::H;
         uint8_t   arity      = 0;
         uint8_t   flags      = gate_flags::NONE;
         uint8_t   _pad0      = 0;
 
-        int16_t   qubits[3]  = {-1, -1, -1};
-        uint16_t  _pad1      = 0;
+        int16_t   qubits[4]  = {-1, -1, -1, -1};
 
         float     params[3]  = {0.0f, 0.0f, 0.0f};
 
-        uint32_t  matrix_idx = UINT32_MAX;   // UINT32_MAX ≡ "no matrix"
+        uint32_t  matrix_idx = NO_MATRIX;   // NO_MATRIX ≡ "no matrix"
         uint32_t  uid        = 0;
     };
 
@@ -106,8 +107,6 @@ namespace qlassical {
     static_assert(std::is_trivially_destructible_v<GateInstr>,
                 "GateInstr must be trivially destructible (no cleanup needed)");
 
-    // Special value for "no matrix" 
-    inline constexpr uint32_t NO_MATRIX = UINT32_MAX;
 
     // -----------------------------------------------------------------
     // UnitaryPool — custom/fused unitary matrices
