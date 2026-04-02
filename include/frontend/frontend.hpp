@@ -106,7 +106,67 @@ namespace qlassical {
     static_assert(std::is_trivially_destructible_v<GateInstr>,
                 "GateInstr must be trivially destructible (no cleanup needed)");
 
-    
+    // Special value for "no matrix" 
+    inline constexpr uint32_t NO_MATRIX = UINT32_MAX;
+
+    // -----------------------------------------------------------------
+    // UnitaryPool — custom/fused unitary matrices
+    // -----------------------------------------------------------------
+    //
+    // Storage is a flat vector of complex<double>. Each matrix is stored
+    // row-major, starting at a known offset. The GateInstr's
+    // matrix_idx stores the START INDEX into this flat array, not a pointer.
+    //
+    // For a k-qubit unitary: size = 2^k × 2^k = 4^k complex entries.
+
+    struct UnitaryPool {
+        struct MatrixEntry {
+            uint32_t offset;       // Start index into `data`
+            uint32_t num_elements; // Number of complex<double> entries (= 4^k)
+            uint8_t  num_qubits;   // k (the matrix acts on k qubits)
+            uint8_t  _pad[3] = {};
+        };
+
+        std::vector<std::complex<double>> data;   
+        std::vector<MatrixEntry>          metadata;  
+
+        // Store a new matrix, return its matrix_idx
+        // 1) nodiscard -> warn if the return value is ignored
+        // 2) span -> light view of a general contiguous sequence of objects, more general than std::vector (C++20)
+        //            it contains a pointer to the beginning of the sequence and its length.
+        [[nodiscard]] uint32_t store(std::span<const std::complex<double>> matrix,
+                                    uint8_t num_qubits) {
+            // expected_size = 2^(2k) 
+            const uint32_t expected = static_cast<uint32_t>(1u) << (2u * num_qubits);
+            if (matrix.size() != expected) {
+                throw std::invalid_argument(
+                    "UnitaryPool::store: matrix size mismatch. Expected " +
+                    std::to_string(expected) + ", got " +
+                    std::to_string(matrix.size()));
+            }
+
+            const uint32_t idx    = static_cast<uint32_t>(metadata.size());
+            const uint32_t offset = static_cast<uint32_t>(data.size());
+
+            data.insert(data.end(), matrix.begin(), matrix.end());
+            metadata.push_back(MatrixEntry{offset, expected, num_qubits});
+
+            return idx;
+        }
+
+        // Retrieve a matrix as a span (zero-copy) 
+        [[nodiscard]] std::span<const std::complex<double>>
+        get(uint32_t matrix_idx) const {
+            assert(matrix_idx < metadata.size() && "matrix_idx out of bounds");
+            const auto& entry = metadata[matrix_idx];
+            return {data.data() + entry.offset, entry.num_elements};
+        }
+
+        // Query 
+        [[nodiscard]] std::size_t num_matrices()    const noexcept { return metadata.size(); }
+        [[nodiscard]] std::size_t total_elements()  const noexcept { return data.size(); }
+        [[nodiscard]] bool        empty()           const noexcept { return metadata.empty(); }
+    };
 
 }
 
