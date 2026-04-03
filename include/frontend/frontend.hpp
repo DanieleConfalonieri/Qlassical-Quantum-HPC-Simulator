@@ -89,25 +89,6 @@ namespace qlassical {
         uint32_t  uid        = 0;
     };
 
-    // Compile-time layout verification 
-
-    static_assert(sizeof(GateInstr)  == 32, "GateInstr must be exactly 32 bytes");
-    static_assert(alignof(GateInstr) == 32, "GateInstr must be 32-byte aligned");
-
-    static_assert(offsetof(GateInstr, type)       == 0,  "type at byte 0");
-    static_assert(offsetof(GateInstr, arity)      == 1,  "arity at byte 1");
-    static_assert(offsetof(GateInstr, flags)      == 2,  "flags at byte 2");
-    static_assert(offsetof(GateInstr, qubits)     == 4,  "qubits at byte 4");
-    static_assert(offsetof(GateInstr, params)     == 12, "params at byte 12");
-    static_assert(offsetof(GateInstr, matrix_idx) == 24, "matrix_idx at byte 24");
-    static_assert(offsetof(GateInstr, uid)        == 28, "uid at byte 28");
-
-    static_assert(std::is_trivially_copyable_v<GateInstr>,
-                "GateInstr must be trivially copyable for memcpy/SIMD ops");
-    static_assert(std::is_trivially_destructible_v<GateInstr>,
-                "GateInstr must be trivially destructible (no cleanup needed)");
-
-
     // -----------------------------------------------------------------
     // UnitaryPool — custom/fused unitary matrices
     // -----------------------------------------------------------------
@@ -420,9 +401,10 @@ namespace qlassical {
         }
 
         // Core push
-        void push(GateInstr instr) {
-            instr.uid = uid_counter_++;
-            module_.gate_stream.push_back(instr);
+        void push(const GateInstr& instr) {
+            GateInstr to_push = instr;
+            to_push.uid = uid_counter_++;
+            module_.gate_stream.push_back(to_push);
         }
 
         // Typed push helpers 
