@@ -201,23 +201,37 @@ namespace qlassical::backend {
 
         // Hadamard: H = (1/sqrt(2)) [[1, 1], [1, -1]]
         void apply_h(int16_t target) {
-            // TODO: implement bit-weaving kernel for Hadamard
-            //
-            // const std::size_t dim = sv_.dimension();
-            // const std::size_t stride = std::size_t{1} << target;
-            // const double inv_sqrt2 = 1.0 / std::sqrt(2.0);
-            // auto* amp = sv_.data();
-            //
-            // #pragma omp parallel for schedule(static)
-            // for (std::size_t block = 0; block < dim; block += 2 * stride) {
-            //     for (std::size_t i = block; i < block + stride; ++i) {
-            //         auto a0 = amp[i];
-            //         auto a1 = amp[i + stride];
-            //         amp[i]          = inv_sqrt2 * (a0 + a1);
-            //         amp[i + stride] = inv_sqrt2 * (a0 - a1);
-            //     }
-            // }
-            (void)target;
+            const std::size_t dim      = sv_.dimension();
+            const std::size_t half_dim = dim / 2;
+            const double inv_sqrt2     = 1.0 / std::sqrt(2.0);
+            auto* amp = sv_.data();
+
+            // Mask for the bits to the right of the target position
+            const std::size_t mask = (std::size_t{1} << target) - 1;
+
+#ifdef QLASSICAL_HAS_OPENMP
+            #pragma omp parallel for schedule(static)
+#endif
+            for (int64_t i = 0; i < static_cast<int64_t>(half_dim); ++i) {
+                const std::size_t idx = static_cast<std::size_t>(i);
+
+                // Exploit bit level regularity in couples of amplitudes affected by the gate representation 
+                // through binary encoding of the index. This allows a well balanced work distribution among 
+                // threads without thread starvation or divergence.
+                // ...to explain in the doc
+                const std::size_t i0 = (idx & mask) | ((idx & ~mask) << 1);
+
+                // i1 is identical to i0, but with a 1 in the 'target' position
+                const std::size_t i1 = i0 | (std::size_t{1} << target);
+
+                // Extract amplitudes
+                const auto a0 = amp[i0];
+                const auto a1 = amp[i1];
+
+                // Apply Hadamard transformation
+                amp[i0] = inv_sqrt2 * (a0 + a1);
+                amp[i1] = inv_sqrt2 * (a0 - a1);
+            }
         }
 
         // Pauli-X: X = [[0, 1], [1, 0]]
