@@ -1,11 +1,11 @@
-// ============================================================================
-// Qlassical — Frontend.hpp Test Suite (Catch2 v3)
-// ============================================================================
+// -----------------------------
+// Qlassical - Frontend.hpp Test
+// -----------------------------
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-#include "frontend/frontend.hpp" // Aggiusta il path se necessario
+#include "frontend/frontend.hpp" 
 
 #include <cmath>
 #include <complex>
@@ -16,7 +16,7 @@
 using namespace qlassical;
 
 // -------------------------
-// GateInstr — Memory layout
+// GateInstr - Memory layout
 // -------------------------
 
 TEST_CASE("GateInstr is exactly 32 bytes and 32-byte aligned", "[GateInstr]") {
@@ -186,7 +186,7 @@ TEST_CASE("IRModule span accessors return correct views", "[IRModule]") {
 }
 
 // ----------------------------------------------
-// SECTION 4: QuantumCircuit — Single-qubit gates
+// SECTION 4: QuantumCircuit - Single-qubit gates
 // ----------------------------------------------
 
 TEST_CASE("QuantumCircuit builds a single H gate", "[builder][1q]") {
@@ -225,7 +225,7 @@ TEST_CASE("QuantumCircuit builds all single-qubit non-parametric gates", "[build
 }
 
 // ---------------------------------------------------------
-// SECTION 5: QuantumCircuit — Single-qubit parametric gates
+// SECTION 5: QuantumCircuit - Single-qubit parametric gates
 // ---------------------------------------------------------
 
 TEST_CASE("QuantumCircuit RX stores angle correctly", "[builder][1q][param]") {
@@ -265,7 +265,7 @@ TEST_CASE("QuantumCircuit RY and RZ parametric gates", "[builder][1q][param]") {
 }
 
 // -------------------------------------------
-// SECTION 6: QuantumCircuit — Two-qubit gates
+// SECTION 6: QuantumCircuit - Two-qubit gates
 // --------------------------------------------
 
 TEST_CASE("QuantumCircuit CX (CNOT) gate", "[builder][2q]") {
@@ -313,7 +313,7 @@ TEST_CASE("QuantumCircuit SWAP gate", "[builder][2q]") {
 }
 
 // ---------------------------------------------
-// SECTION 7: QuantumCircuit — Three-qubit gates
+// SECTION 7: QuantumCircuit - Three-qubit gates
 // ---------------------------------------------
 
 TEST_CASE("QuantumCircuit CCX (Toffoli) gate", "[builder][3q]") {
@@ -364,7 +364,7 @@ TEST_CASE("QuantumCircuit Fredkin alias delegates to CSWAP", "[builder][3q]") {
 }
 
 // ------------------------------------------
-// SECTION 8: QuantumCircuit — Custom unitary
+// SECTION 8: QuantumCircuit - Custom unitary
 // -------------------------------------------
 
 TEST_CASE("QuantumCircuit applies a custom 1-qubit unitary", "[builder][unitary]") {
@@ -422,7 +422,7 @@ TEST_CASE("Custom unitary rejects zero arity", "[builder][unitary][error]") {
 }
 
 // --------------------------------------------------------
-// SECTION 9: QuantumCircuit — Circuit structure directives
+// SECTION 9: QuantumCircuit - Circuit structure directives
 // --------------------------------------------------------
 
 TEST_CASE("QuantumCircuit barrier with specific qubits", "[builder][directive]") {
@@ -487,7 +487,7 @@ TEST_CASE("QuantumCircuit measure multiple qubits", "[builder][directive]") {
 }
 
 // -----------------------------------------------
-// SECTION 10: QuantumCircuit — composite circuits
+// SECTION 10: QuantumCircuit - composite circuits
 // -----------------------------------------------
 
 TEST_CASE("QuantumCircuit builds Bell state circuit", "[builder]") {
@@ -532,7 +532,7 @@ TEST_CASE("UIDs are strictly monotonically increasing", "[builder][uid]") {
 }
 
 // -------------------------------------------------------
-// SECTION 12: QuantumCircuit — Move semantics & release()
+// SECTION 12: QuantumCircuit - Move semantics & release()
 // -------------------------------------------------------
 
 TEST_CASE("QuantumCircuit is move-only", "[builder][move]") {
@@ -578,7 +578,7 @@ TEST_CASE("QuantumCircuit query methods", "[builder]") {
 }
 
 // --------------------------------------------------
-// SECTION 13: Qubit validation — boundary conditions
+// SECTION 13: Qubit validation - boundary conditions
 // --------------------------------------------------
 
 TEST_CASE("Out-of-range qubit throws std::out_of_range", "[builder][error]") {

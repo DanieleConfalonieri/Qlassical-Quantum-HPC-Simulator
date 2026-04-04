@@ -102,7 +102,7 @@ namespace qlassical::backend {
             return amplitudes_.data();
         }
 
-        // Query
+        // Qury
 
         [[nodiscard]] uint32_t num_qubits() const noexcept {
             return num_qubits_;

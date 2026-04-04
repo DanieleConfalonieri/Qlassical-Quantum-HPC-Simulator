@@ -43,7 +43,7 @@ namespace qlassical {
     };
 
     // -------------------------------------
-    // GateFlags — Bit-packed modifier flags 
+    // GateFlags - Bit-packed modifier flags 
     // ------------------------------------- 
 
     namespace gate_flags {
@@ -55,7 +55,7 @@ namespace qlassical {
     }
 
     // --------------------------------------------------------
-    // GateInstr — The central IR instruction (32-byte aligned)
+    // GateInstr - The central IR instruction (32-byte aligned)
     // --------------------------------------------------------
     //
     // Memory layout (offsets verified by static_assert):
@@ -90,7 +90,7 @@ namespace qlassical {
     };
 
     // -----------------------------------------------------------------
-    // UnitaryPool — custom/fused unitary matrices
+    // UnitaryPool - custom/fused unitary matrices
     // -----------------------------------------------------------------
     //
     // Storage is a flat vector of complex<double>. Each matrix is stored
@@ -149,7 +149,7 @@ namespace qlassical {
     };
 
     // ----------------------------------------------
-    // IRModule — Intermediate program representation
+    // IRModule - Intermediate program representation
     // ----------------------------------------------
     //
     // Owns both the hot (GateInstr) and cold (UnitaryPool) data.
@@ -186,7 +186,7 @@ namespace qlassical {
     };
 
     // ---------------------------
-    // QuantumCircuit — IR Builder
+    // QuantumCircuit - IR Builder
     // ---------------------------
     //
     // Usage:
