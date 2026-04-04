@@ -1,11 +1,11 @@
 #ifndef QLASSICAL_BACKEND_STATE_VECTOR_HPP
 #define QLASSICAL_BACKEND_STATE_VECTOR_HPP
 
-// -----------
-// StateVector
-// -----------
+// --------------
+// CPUStateVector
+// --------------
 
-// Encapsulates the physical memory for exact statevector simulation.
+// Encapsulates the physical memory for exact CPUStateVector simulation.
 // The state |psi> is stored as a contiguous array of 2^n complex amplitudes
 // with 64-byte alignment (enforced by AlignedAllocator).
 
@@ -23,19 +23,19 @@
 
 namespace qlassical::backend {
 
-    class StateVector {
+    class CPUStateVector {
     public:
         using Amplitude  = std::complex<double>;
         using AlignedVec = std::vector<Amplitude, AlignedAllocator<Amplitude, 64>>;
 
         // Default constructor
-        StateVector() = default;
+        CPUStateVector() = default;
 
         // Move-only
-        StateVector(StateVector&&) noexcept = default;
-        StateVector& operator=(StateVector&&) noexcept = default;
-        StateVector(const StateVector&) = delete;
-        StateVector& operator=(const StateVector&) = delete;
+        CPUStateVector(CPUStateVector&&) noexcept = default;
+        CPUStateVector& operator=(CPUStateVector&&) noexcept = default;
+        CPUStateVector(const CPUStateVector&) = delete;
+        CPUStateVector& operator=(const CPUStateVector&) = delete;
 
         // Initialization
 
