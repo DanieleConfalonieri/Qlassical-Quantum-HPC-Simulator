@@ -2,15 +2,15 @@
 #define QLASSICAL_BACKEND_CPU_OPENMP_ENGINE_HPP
 
 // -------------------------------------------
-// CPUOpenMPEngine - Shared-Memory CPU Backend
+// CPUOpenMPEngine — Shared-Memory CPU Backend
 // -------------------------------------------
 //
 // Concrete ExecutionEngine for multi-core CPU execution with OpenMP.
 
 
 // Architecture:
-//   CPUOpenMPEngine owns a StateVector and implements the dispatch loop that
-//   converts the Frontend's GateInstr stream into statevector mutations.
+//   CPUOpenMPEngine owns a CPUStateVector and implements the dispatch loop that
+//   converts the Frontend's GateInstr stream into CPUStateVector mutations.
 
 
 // Gate dispatch strategy:
@@ -30,12 +30,12 @@
 //     The unitary matrix is runtime data stored in the UnitaryPool.    
 //     We read the matrix via pool.get(matrix_idx), map it with         
 //     Eigen::Map, and apply it as a dense matrix-vector product over   
-//     sub-blocks of the statevector.                                   
+//     sub-blocks of the CPUStateVector.                                   
 //                                                                       
 //     For a k-qubit unitary acting on qubits {q0, ..., q_{k-1}}:      
 //       - Block size = 2^k                                              
 //       - Number of blocks = 2^n / 2^k = 2^(n-k)                      
-//       - Each block is an independent dense mat-vec: U × |block⟩     
+//       - Each block is an independent dense mat-vec: U × |block> 
 //                                                                       
 //     This is the fallback path. It's correct for any unitary but      
 //     slower than algorithm-driven 
@@ -152,15 +152,13 @@ namespace qlassical::backend {
                         // TODO: physical qubit permutation (streaming memory sweep)
                         break;
                     default:
-                        throw std::runtime_error(
-                            "CPUOpenMPEngine::execute: unrecognized gate type " +
-                            std::to_string(static_cast<uint8_t>(instr.type)));
-                        
+                        // Unrecognized Instruction -> thow exception
+
                 }
             }
         }
-    
-    [[nodiscard]] std::span<const std::complex<double>>
+
+        [[nodiscard]] std::span<const std::complex<double>>
         state() const override {
             return sv_.amplitudes();
         }
@@ -169,14 +167,195 @@ namespace qlassical::backend {
             return sv_.num_qubits();
         }
 
-        // Direct StateVector access (testing/debugging)
+        // Direct CPUStateVector access (testing/debugging)
 
         [[nodiscard]] const CPUStateVector& state_vector() const noexcept {
             return sv_;
         }
-    
+
     private:
         CPUStateVector sv_;
+
+        // -----------------------------
+        // Algorithm-Driven Gate Kernels 
+        // -----------------------------
+
+        //  We don't need to compute the action of the gate as 
+        //  a rotation on the Bloch Sphere!
+
+        //  For a single-qubit gate on target qubit t:
+
+        //    stride = 1 << t
+        //    for each pair (i, i + stride) where target bit t of i is 0:
+        //        a0 = amplitudes[i]
+        //        a1 = amplitudes[i + stride]
+        //        amplitudes[i]          = U[0][0]*a0 + U[0][1]*a1
+        //        amplitudes[i + stride] = U[1][0]*a0 + U[1][1]*a1
+        
+        //  The outer loop can be parallelized with OpenMP. For low-index
+        //  qubits, the stride is small and pairs are cache-local.
+
+        //  For high-index qubits, the stride is large...NUMA-aware page
+        //  placement becomes critical for data locality.
+        // 
+
+        // Hadamard: H = (1/sqrt(2)) [[1, 1], [1, -1]]
+        void apply_h(int16_t target) {
+            // TODO: implement bit-weaving kernel for Hadamard
+            //
+            // const std::size_t dim = sv_.dimension();
+            // const std::size_t stride = std::size_t{1} << target;
+            // const double inv_sqrt2 = 1.0 / std::sqrt(2.0);
+            // auto* amp = sv_.data();
+            //
+            // #pragma omp parallel for schedule(static)
+            // for (std::size_t block = 0; block < dim; block += 2 * stride) {
+            //     for (std::size_t i = block; i < block + stride; ++i) {
+            //         auto a0 = amp[i];
+            //         auto a1 = amp[i + stride];
+            //         amp[i]          = inv_sqrt2 * (a0 + a1);
+            //         amp[i + stride] = inv_sqrt2 * (a0 - a1);
+            //     }
+            // }
+            (void)target;
+        }
+
+        // Pauli-X: X = [[0, 1], [1, 0]]
+        void apply_x(int16_t target) { 
+            // TODO: implement -> swap amplitude pairs
+            // amp[i] ↔ amp[i + stride]
+            (void)target;
+        }
+
+        // Pauli-Y: Y = [[0, -i], [i, 0]]
+        void apply_y(int16_t target) {
+            // TODO: implement -> swap with phase
+            // amp[i]          = -i * amp[i + stride]
+            // amp[i + stride] =  i * amp[i]
+            (void)target;
+        }
+
+        // Pauli-Z: Z = [[1, 0], [0, -1]] 
+        void apply_z(int16_t target) {
+            // TODO: implement -> negate amp[i + stride]
+            // Only the |1⟩ component gets a sign flip
+            (void)target;
+        }
+
+        // S gate: S = [[1, 0], [0, i]]
+        void apply_s(int16_t target) {
+            // TODO: implement -> multiply |1> component by i
+            (void)target;
+        }
+
+        // RX(theta): [[cos(theta/2), -i sin(theta/2)], [-i sin(theta/2), cos(theta/2)]] 
+        void apply_rx(int16_t target, float theta) {
+            // TODO: implement -> parametric rotation around X axis
+            (void)target;
+            (void)theta;
+        }
+
+        // RY(theta): [[cos(theta/2), -sin(theta/2)], [sin(theta/2), cos(theta/2)]] 
+        void apply_ry(int16_t target, float theta) {
+            // TODO: implement -> parametric rotation around Y axis
+            (void)target;
+            (void)theta;
+        }
+
+        // RZ(theta): [[e^{-i*theta/2}, 0], [0, e^{i*theta/2}]] 
+        void apply_rz(int16_t target, float theta) {
+            // TODO: implement -> parametric rotation around Z axis
+            (void)target;
+            (void)theta;
+        }
+
+        // CNOT: if control is |1⟩, flip target
+        void apply_cx(int16_t control, int16_t target) {
+            // TODO: implement -> controlled-X via bit masking
+            //
+            // Iterate over amplitude pairs that differ in bit 'target'.
+            // For each pair, check if bit 'control' is set in the index.
+            // If yes, swap the pair (apply X on target). If no, skip.
+            //
+            // const std::size_t ctrl_mask = std::size_t{1} << control;
+            // const std::size_t tgt_stride = std::size_t{1} << target;
+            // ...
+            // if (i & ctrl_mask) { std::swap(amp[i], amp[i + tgt_stride]); }
+            (void)control;
+            (void)target;
+        }
+
+        // SWAP: exchange amplitudes of two qubits
+        void apply_swap(int16_t q0, int16_t q1) {
+            // TODO: implement -> swap amplitudes where q0 and q1 differ
+            // Decomposable as 3 CNOTs, but direct implementation is faster.
+            (void)q0;
+            (void)q1;
+        }
+
+        // Toffoli (CCX): if both controls are |1>, flip target 
+        void apply_ccx(int16_t c0, int16_t c1, int16_t target) {
+            // TODO: implement -> doubly-controlled X
+            // Same bit-weaving as CX but with two control masks:
+            // if ((i & c0_mask) && (i & c1_mask)) { swap pair }
+            (void)c0;
+            (void)c1;
+            (void)target;
+        }
+
+        // Fredkin (CSWAP): if control is |1>, swap two targets
+        void apply_cswap(int16_t ctrl, int16_t q0, int16_t q1) {
+            // TODO: implement -> controlled swap
+            (void)ctrl;
+            (void)q0;
+            (void)q1;
+        }
+
+        // -----------------------
+        // Data-Driven Gate Kernel 
+        // -----------------------
+        //
+        //  For UNITARY and FUSED_BLOCK gates, the matrix is runtime data
+        //  from the UnitaryPool. The idea is:
+        //
+        //    1. Retrieve the dense matrix: pool.get(instr.matrix_idx)
+        //    2. Determine the target qubits: instr.qubits[0..arity-1]
+        //    3. For each sub-block of 2^k amplitudes (k = arity):
+        //       a. Gather the 2^k amplitudes into a local buffer
+        //       b. Apply U * buffer
+        //       c. Scatter the results back
+        //
+        //  This has to be done within the Eigen framework
+
+        void apply_unitary(const GateInstr& instr, const UnitaryPool& pool) {
+            // TODO: implement generic unitary application via Eigen::Map
+            (void)instr;
+            (void)pool;
+        }
+
+        // -----------
+        // Measurement 
+        // -----------
+        //
+        //  Measurement in an exact CPUStateVector simulator requires:
+        //    1. Compute marginal probability with Born's rule
+        //    2. Generate random number r
+        //    3. Collapse: if r < P(|1>), project onto |1> subspace;
+        //       otherwise project onto |0> subspace
+        //    4. Renormalize
+    
+
+        void apply_measure([[maybe_unused]] int16_t target) {
+            // TODO: projection and renormalization
+        }
     };
-} 
+
+    // ExecutionEngine convenience overload
+    
+    inline void ExecutionEngine::execute(const IRModule& module) {
+        execute(module.program(), module.unitaries());
+    }
+
+}
+
 #endif 
