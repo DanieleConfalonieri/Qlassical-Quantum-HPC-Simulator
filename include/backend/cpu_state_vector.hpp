@@ -16,10 +16,7 @@
 
 #include "aligned_allocator.hpp"
 
-// Conditionally include OpenMP
-#ifdef QLASSICAL_HAS_OPENMP
-    #include <omp.h>
-#endif
+#include <omp.h>
 
 namespace qlassical::backend {
 
@@ -68,9 +65,7 @@ namespace qlassical::backend {
 
             const auto dim_signed = static_cast<int64_t>(dim); // signed to avoid OpenMP warnings
 
-#ifdef QLASSICAL_HAS_OPENMP
             #pragma omp parallel for schedule(static)
-#endif
             for (int64_t i = 0; i < dim_signed; ++i) {
                 amplitudes_[static_cast<std::size_t>(i)] = Amplitude{0.0, 0.0};
             }

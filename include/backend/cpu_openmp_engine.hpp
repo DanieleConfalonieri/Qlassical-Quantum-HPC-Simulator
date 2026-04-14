@@ -202,10 +202,9 @@ namespace qlassical::backend {
 
         // Each kernel uses OpenMP; we generalize the pattern for all gates
         template <typename KernelFunc>
-        inline void flat_loop(std::size_t iters, KernelFunc&& kernel) {
- #ifdef QLASSICAL_HAS_OPENMP
+        inline void openmp_loop(std::size_t iters, KernelFunc&& kernel) {
+            
             #pragma omp parallel for schedule(static)
-#endif
             for (int64_t i = 0; i < static_cast<int64_t>(iters); ++i) {
                 std::forward<KernelFunc>(kernel)(static_cast<std::size_t>(i)); // Perfect forwarding of the kernel function
             }
@@ -217,7 +216,7 @@ namespace qlassical::backend {
             const double inv_sqrt2 = 1.0 / std::sqrt(2.0);
             auto* amp = sv_.data();
 
-            flat_loop(half_dim, [amp, target, inv_sqrt2](std::size_t idx) {
+            openmp_loop(half_dim, [amp, target, inv_sqrt2](std::size_t idx) {
                 const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
                 const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
                 // Extract amplitudes
@@ -236,7 +235,7 @@ namespace qlassical::backend {
             const std::size_t half_dim = sv_.dimension()/2;
             auto* amp = sv_.data();
 
-            flat_loop(half_dim, [amp, target](std::size_t idx) {
+            openmp_loop(half_dim, [amp, target](std::size_t idx) {
                 const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
                 const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
                 std::swap(amp[i0], amp[i1]);
