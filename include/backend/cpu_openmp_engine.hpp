@@ -218,7 +218,7 @@ namespace qlassical::backend {
                 // Exploit bit level regularity in couples of amplitudes affected by the gate representation 
                 // through binary encoding of the index. This allows a well balanced work distribution among 
                 // threads without thread starvation or divergence.
-                // ...to explain in the doc
+                // ...better explained in the doc
                 const std::size_t i0 = (idx & mask) | ((idx & ~mask) << 1);
 
                 // i1 is identical to i0, but with a 1 in the 'target' position
@@ -236,9 +236,26 @@ namespace qlassical::backend {
 
         // Pauli-X: X = [[0, 1], [1, 0]]
         void apply_x(int16_t target) { 
-            // TODO: implement -> swap amplitude pairs
-            // amp[i] ↔ amp[i + stride]
-            (void)target;
+            // swap amplitude pairs
+            // amp[i] <-> amp[i + stride]
+            const std::size_t dim      = sv_.dimension();
+            const std::size_t half_dim = dim / 2;
+            auto* amp = sv_.data();
+
+            // Mask for the bits to the right of the target position
+            const std::size_t mask = (std::size_t{1} << target) - 1;
+
+#ifdef QLASSICAL_HAS_OPENMP
+            #pragma omp parallel for schedule(static)
+#endif
+            for (int64_t i = 0; i < static_cast<int64_t>(half_dim); ++i) {
+                const std::size_t idx = static_cast<std::size_t>(i);
+                const std::size_t i0 = (idx & mask) | ((idx & ~mask) << 1);
+                const std::size_t i1 = i0 | (std::size_t{1} << target);
+
+                // Apply X transformation (swap)
+                std::swap(amp[i0], amp[i1]);
+            }
         }
 
         // Pauli-Y: Y = [[0, -i], [i, 0]]
