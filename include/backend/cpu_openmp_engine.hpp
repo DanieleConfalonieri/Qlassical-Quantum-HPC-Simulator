@@ -54,6 +54,7 @@
 
 #include "execution_engine.hpp"
 #include "cpu_state_vector.hpp"
+#include "state_vector_utils.hpp"
 #include <frontend/frontend.hpp>
 
 namespace qlassical::backend {
@@ -197,65 +198,49 @@ namespace qlassical::backend {
 
         //  For high-index qubits, the stride is large...NUMA-aware page
         //  placement becomes critical for data locality.
-        // 
+        
+
+        // Each kernel uses OpenMP; we generalize the pattern for all gates
+        template <typename KernelFunc>
+        inline void flat_loop(std::size_t iters, KernelFunc&& kernel) {
+ #ifdef QLASSICAL_HAS_OPENMP
+            #pragma omp parallel for schedule(static)
+#endif
+            for (int64_t i = 0; i < static_cast<int64_t>(iters); ++i) {
+                std::forward<KernelFunc>(kernel)(static_cast<std::size_t>(i)); // Perfect forwarding of the kernel function
+            }
+        }
 
         // Hadamard: H = (1/sqrt(2)) [[1, 1], [1, -1]]
         void apply_h(int16_t target) {
-            const std::size_t dim      = sv_.dimension();
-            const std::size_t half_dim = dim / 2;
-            const double inv_sqrt2     = 1.0 / std::sqrt(2.0);
+            const std::size_t half_dim = sv_.dimension()/2;
+            const double inv_sqrt2 = 1.0 / std::sqrt(2.0);
             auto* amp = sv_.data();
 
-            // Mask for the bits to the right of the target position
-            const std::size_t mask = (std::size_t{1} << target) - 1;
-
-#ifdef QLASSICAL_HAS_OPENMP
-            #pragma omp parallel for schedule(static)
-#endif
-            for (int64_t i = 0; i < static_cast<int64_t>(half_dim); ++i) {
-                const std::size_t idx = static_cast<std::size_t>(i);
-
-                // Exploit bit level regularity in couples of amplitudes affected by the gate representation 
-                // through binary encoding of the index. This allows a well balanced work distribution among 
-                // threads without thread starvation or divergence.
-                // ...better explained in the doc
-                const std::size_t i0 = (idx & mask) | ((idx & ~mask) << 1);
-
-                // i1 is identical to i0, but with a 1 in the 'target' position
-                const std::size_t i1 = i0 | (std::size_t{1} << target);
-
+            flat_loop(half_dim, [amp, target, inv_sqrt2](std::size_t idx) {
+                const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
+                const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
                 // Extract amplitudes
                 const auto a0 = amp[i0];
                 const auto a1 = amp[i1];
-
                 // Apply Hadamard transformation
                 amp[i0] = inv_sqrt2 * (a0 + a1);
                 amp[i1] = inv_sqrt2 * (a0 - a1);
-            }
+            });
         }
 
         // Pauli-X: X = [[0, 1], [1, 0]]
         void apply_x(int16_t target) { 
             // swap amplitude pairs
             // amp[i] <-> amp[i + stride]
-            const std::size_t dim      = sv_.dimension();
-            const std::size_t half_dim = dim / 2;
+            const std::size_t half_dim = sv_.dimension()/2;
             auto* amp = sv_.data();
 
-            // Mask for the bits to the right of the target position
-            const std::size_t mask = (std::size_t{1} << target) - 1;
-
-#ifdef QLASSICAL_HAS_OPENMP
-            #pragma omp parallel for schedule(static)
-#endif
-            for (int64_t i = 0; i < static_cast<int64_t>(half_dim); ++i) {
-                const std::size_t idx = static_cast<std::size_t>(i);
-                const std::size_t i0 = (idx & mask) | ((idx & ~mask) << 1);
-                const std::size_t i1 = i0 | (std::size_t{1} << target);
-
-                // Apply X transformation (swap)
+            flat_loop(half_dim, [amp, target](std::size_t idx) {
+                const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
+                const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
                 std::swap(amp[i0], amp[i1]);
-            }
+            });
         }
 
         // Pauli-Y: Y = [[0, -i], [i, 0]]
