@@ -43,3 +43,6 @@ build/*
 
 # vtk
 *.vtk
+
+# Personal Notes
+/notes/*
