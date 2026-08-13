@@ -1,0 +1,40 @@
+Gates:
+
+- (Minor Optimization) Having the index of the qubits represented by an int makes sense? Our classical simulator without Quantum backend cannot simulate more than 32-35 qubits,
+  but if we want to be able to implement a Quantum backend maybe we should keep it like this.
+  Ok I just checked the file on the frontend update and now it works a little bit differently, I should discuss with Cris.
+
+- I am not sure but I think there could be buffer overflow problems with the matrix_idx int the gate representation.
+  I should discuss with Cris, maybe he already thought about that.
+  We should define a clear protocol to represent these instructions
+
+- The Gate class works perfectly fine but maybe we can make it abstract to create some Gate subclasses (ControlledGate, CustomGate, BasicGate, FusedGate).
+  There could be performance problems if we use a lot of polimorphism but I think that the MiddleEnd could take care of this,
+  preprocessing the more abstract representation transformating it in a High Performance oriented structure.
+  The bottleneck should be modifying the abnormous state vector,
+  I don't think that a slightly slower preprocessing will be a problem but we should discuss this together.
+  I was thinking about modifying the ExecutionPlan to include also when to swap the qubits to improve performance but I am not sure which is the best way.
+
+MiddleEnd:
+- I actually forgot when the method build_dag should be called, is an internal call of +compile(QuantumCircuit qc)?
+
+- I don't remember what datect_topology does lol.
+
+- There is a common way to find the number of cores in Linux and Windows? Otherwise get_num_cores() should be a method of the subclasses.
+
+- As I said before I think that the ExecutionPlan should be somehow modified but I am not sure.
+
+- We should discuss together the role of Hardware Awareness in this project, because I am starting to feel that dimensioning the gates based on cache size
+  doesn't make a lot of sense if most of the cache will be occupied with the state vector. But it still could be a good idea, I am not sure.
+
+BackEnd:
+- As we already said we could add a GPUExecutionEngine.
+
+- I am not sure how we can manage a distributed state vector (both GPU and OPENMP) we should discuss this together.
+
+BitWise Trick:
+- I think I got that but Cris surely can explain it to me better.
+
+Aligned_Allocator?
+
+ 

@@ -1,0 +1,11 @@
+- Dobbiamo scrivere un Wrapper CircuitRunner che prenda come parametro nel costruttore QuantumCircuit e BackEndType.
+  Questo oggetto avrà un metodo run e degli attributi privati istanziati alla creazione MiddleEnd, BackEnd, ...
+  Le interazioni tra FrontEnd, MiddleEnd e BackEnd saranno mascherate dal metodo run() per rendere all'utente facile simulare i propri circuiti.
+
+- Il parallelismo che dobbiamo implementare deve essere DATA ORIENTED. Non dobbiamo parallelizzare su più GateInstr:
+  ciò porterebbe a degradazione di performance per via del false sharing delle amplitudes dello StateVector.
+  Dobbiamo processare una istruzione alla volta facendo parallelismo sui chunk dello StateVector.
+
+- Dovremmo inserire nel nostro ExecutionPlanner diversi Swap per poter sfruttare l'ottimizzazione dello stride minimo tra qubit
+  Per fare Swap senza compromettere la correttezza del programma creare una tabella di posizione virtuale per i qubit e la soluzione più sensata.
+  In questo modo non dobbiamo modificare fisicamente il qubit di riferimento nelle GateInstr. 
