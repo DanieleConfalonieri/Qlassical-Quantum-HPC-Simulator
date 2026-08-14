@@ -195,9 +195,9 @@ public:
     return sv_.num_qubits();
   }
 
-  // Direct CPUStateVector access (testing/debugging)
+  // Direct StateVector access (testing/debugging)
 
-  [[nodiscard]] const CPUStateVector &state_vector() const noexcept {
+  [[nodiscard]] const StateVector &state_vector() const noexcept {
     return sv_;
   }
 

@@ -15,12 +15,13 @@
 #include <vector>
 
 #include "aligned_allocator.hpp"
+#include "state_vector.hpp"
 
 #include <omp.h>
 
 namespace qlassical::backend {
 
-    class CPUStateVector {
+    class CPUStateVector final : public StateVector {
     public:
         using Amplitude  = std::complex<double>;
         using AlignedVec = std::vector<Amplitude, AlignedAllocator<Amplitude, 64>>;
@@ -44,7 +45,7 @@ namespace qlassical::backend {
         //   amplitudes_[k] == 0.0 + 0.0i  for all k > 0
 
         // Throws std::bad_alloc if the system cannot satisfy the allocation.
-        void initialize(uint32_t num_qubits) {
+        void initialize(uint32_t num_qubits) override {
             num_qubits_ = num_qubits;
             const std::size_t dim = static_cast<std::size_t>(1) << num_qubits;
 
@@ -99,15 +100,15 @@ namespace qlassical::backend {
 
         // Query
 
-        [[nodiscard]] uint32_t num_qubits() const noexcept {
+        [[nodiscard]] uint32_t num_qubits() const noexcept override {
             return num_qubits_;
         }
 
-        [[nodiscard]] std::size_t dimension() const noexcept {
+        [[nodiscard]] std::size_t dimension() const noexcept override {
             return amplitudes_.size();
         }
 
-        [[nodiscard]] bool empty() const noexcept {
+        [[nodiscard]] bool empty() const noexcept override {
             return amplitudes_.empty();
         }
 
