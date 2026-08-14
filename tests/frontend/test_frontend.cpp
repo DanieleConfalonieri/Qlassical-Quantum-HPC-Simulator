@@ -19,19 +19,17 @@ using namespace qlassical;
 // GateInstr - Memory layout
 // -------------------------
 
-TEST_CASE("GateInstr is exactly 32 bytes and 32-byte aligned", "[GateInstr]") {
-    STATIC_REQUIRE(sizeof(GateInstr) == 32);
-    STATIC_REQUIRE(alignof(GateInstr) == 32);
+TEST_CASE("GateInstr is exactly 16 bytes and 16-byte aligned", "[GateInstr]") {
+    STATIC_REQUIRE(sizeof(GateInstr) == 16);
+    STATIC_REQUIRE(alignof(GateInstr) == 16);
 }
 
 TEST_CASE("GateInstr field offsets match documented layout", "[GateInstr]") {
     STATIC_REQUIRE(offsetof(GateInstr, type)       == 0);
-    STATIC_REQUIRE(offsetof(GateInstr, arity)      == 1);
-    STATIC_REQUIRE(offsetof(GateInstr, flags)      == 2);
-    STATIC_REQUIRE(offsetof(GateInstr, qubits)     == 4);
-    STATIC_REQUIRE(offsetof(GateInstr, params)     == 12);
-    STATIC_REQUIRE(offsetof(GateInstr, matrix_idx) == 24);
-    STATIC_REQUIRE(offsetof(GateInstr, uid)        == 28);
+    STATIC_REQUIRE(offsetof(GateInstr, flags_arity)== 1);
+    STATIC_REQUIRE(offsetof(GateInstr, qubits)     == 2);
+    STATIC_REQUIRE(offsetof(GateInstr, payload)    == 8);
+    STATIC_REQUIRE(offsetof(GateInstr, uid)        == 12);
 }
 
 TEST_CASE("GateInstr is trivially copyable and destructible", "[GateInstr]") {
@@ -42,16 +40,13 @@ TEST_CASE("GateInstr is trivially copyable and destructible", "[GateInstr]") {
 TEST_CASE("GateInstr default-initializes to sane values", "[GateInstr]") {
     GateInstr instr{};
 
-    CHECK(instr.arity == 0);
-    CHECK(instr.flags == gate_flags::NONE);
-    CHECK(instr.qubits[0] == -1);
-    CHECK(instr.qubits[1] == -1);
-    CHECK(instr.qubits[2] == -1);
-    CHECK(instr.qubits[3] == -1);
-    CHECK(instr.params[0] == 0.0f);
-    CHECK(instr.params[1] == 0.0f);
-    CHECK(instr.params[2] == 0.0f);
-    CHECK(instr.matrix_idx == NO_MATRIX);
+    CHECK(instr.arity() == 0);
+    CHECK(instr.flags() == gate_flags::NONE);
+    CHECK(instr.qubits[0] == 255);
+    CHECK(instr.qubits[1] == 255);
+    CHECK(instr.qubits[2] == 255);
+    CHECK(instr.qubits[3] == 255);
+    CHECK(instr.payload.param == 0.0f);
     CHECK(instr.uid == 0);
 }
 
@@ -170,7 +165,7 @@ TEST_CASE("IRModule span accessors return correct views", "[IRModule]") {
     IRModule mod(2);
     GateInstr g{};
     g.type = GateType::H;
-    g.arity = 1;
+    g.set_arity(1);
     g.qubits[0] = 0;
     mod.gate_stream.push_back(g);
 
@@ -181,8 +176,8 @@ TEST_CASE("IRModule span accessors return correct views", "[IRModule]") {
 
     auto mut_prog = mod.program();
     REQUIRE(mut_prog.size() == 1);
-    mut_prog[0].flags = gate_flags::ADJOINT;
-    CHECK(mod.gate_stream[0].flags == gate_flags::ADJOINT);
+    mut_prog[0].set_flags(gate_flags::ADJOINT);
+    CHECK(mod.gate_stream[0].flags() == gate_flags::ADJOINT);
 }
 
 // ----------------------------------------------
@@ -198,9 +193,9 @@ TEST_CASE("QuantumCircuit builds a single H gate", "[builder][1q]") {
     auto prog = mod.program();
 
     CHECK(prog[0].type == GateType::H);
-    CHECK(prog[0].arity == 1);
+    CHECK(prog[0].arity() == 1);
     CHECK(prog[0].qubits[0] == 0);
-    CHECK(prog[0].qubits[1] == -1);
+    CHECK(prog[0].qubits[1] == 255);
 }
 
 TEST_CASE("QuantumCircuit builds all single-qubit non-parametric gates", "[builder][1q]") {
@@ -219,7 +214,7 @@ TEST_CASE("QuantumCircuit builds all single-qubit non-parametric gates", "[build
 
     for (std::size_t i = 0; i < 5; ++i) {
         CAPTURE(i);
-        CHECK(prog[i].arity == 1);
+        CHECK(prog[i].arity() == 1);
         CHECK(prog[i].qubits[0] == 0);
     }
 }
@@ -238,12 +233,10 @@ TEST_CASE("QuantumCircuit RX stores angle correctly", "[builder][1q][param]") {
     auto prog = mod.program();
 
     CHECK(prog[0].type == GateType::RX);
-    CHECK(prog[0].arity == 1);
+    CHECK(prog[0].arity() == 1);
     CHECK(prog[0].qubits[0] == 0);
-    CHECK_THAT(static_cast<double>(prog[0].params[0]),
+    CHECK_THAT(static_cast<double>(prog[0].payload.param),
                Catch::Matchers::WithinAbs(theta, 1e-6));
-    CHECK(prog[0].params[1] == 0.0f);
-    CHECK(prog[0].params[2] == 0.0f);
 }
 
 TEST_CASE("QuantumCircuit RY and RZ parametric gates", "[builder][1q][param]") {
@@ -255,12 +248,12 @@ TEST_CASE("QuantumCircuit RY and RZ parametric gates", "[builder][1q][param]") {
     auto prog = mod.program();
 
     CHECK(prog[0].type == GateType::RY);
-    CHECK_THAT(static_cast<double>(prog[0].params[0]),
+    CHECK_THAT(static_cast<double>(prog[0].payload.param),
                Catch::Matchers::WithinAbs(1.234, 1e-6));
 
     CHECK(prog[1].type == GateType::RZ);
     CHECK(prog[1].qubits[0] == 1);
-    CHECK_THAT(static_cast<double>(prog[1].params[0]),
+    CHECK_THAT(static_cast<double>(prog[1].payload.param),
                Catch::Matchers::WithinAbs(-0.567, 1e-6));
 }
 
@@ -277,10 +270,10 @@ TEST_CASE("QuantumCircuit CX (CNOT) gate", "[builder][2q]") {
     auto prog = mod.program();
 
     CHECK(prog[0].type == GateType::CX);
-    CHECK(prog[0].arity == 2);
+    CHECK(prog[0].arity() == 2);
     CHECK(prog[0].qubits[0] == 0);
     CHECK(prog[0].qubits[1] == 2);
-    CHECK(prog[0].qubits[2] == -1);
+    CHECK(prog[0].qubits[2] == 255);
 }
 
 TEST_CASE("QuantumCircuit CNOT alias delegates to CX", "[builder][2q]") {
@@ -307,7 +300,7 @@ TEST_CASE("QuantumCircuit SWAP gate", "[builder][2q]") {
     auto prog = mod.program();
 
     CHECK(prog[0].type == GateType::SWAP);
-    CHECK(prog[0].arity == 2);
+    CHECK(prog[0].arity() == 2);
     CHECK(prog[0].qubits[0] == 1);
     CHECK(prog[0].qubits[1] == 3);
 }
@@ -325,11 +318,11 @@ TEST_CASE("QuantumCircuit CCX (Toffoli) gate", "[builder][3q]") {
     auto prog = mod.program();
 
     CHECK(prog[0].type == GateType::CCX);
-    CHECK(prog[0].arity == 3);
+    CHECK(prog[0].arity() == 3);
     CHECK(prog[0].qubits[0] == 0);
     CHECK(prog[0].qubits[1] == 1);
     CHECK(prog[0].qubits[2] == 2);
-    CHECK(prog[0].qubits[3] == -1);
+    CHECK(prog[0].qubits[3] == 255);
 }
 
 TEST_CASE("QuantumCircuit Toffoli alias delegates to CCX", "[builder][3q]") {
@@ -349,7 +342,7 @@ TEST_CASE("QuantumCircuit CSWAP (Fredkin) gate", "[builder][3q]") {
     auto prog = mod.program();
 
     CHECK(prog[0].type == GateType::CSWAP);
-    CHECK(prog[0].arity == 3);
+    CHECK(prog[0].arity() == 3);
     CHECK(prog[0].qubits[0] == 0);
     CHECK(prog[0].qubits[1] == 1);
     CHECK(prog[0].qubits[2] == 2);
@@ -383,12 +376,12 @@ TEST_CASE("QuantumCircuit applies a custom 1-qubit unitary", "[builder][unitary]
     auto prog = mod.program();
 
     CHECK(prog[0].type == GateType::UNITARY);
-    CHECK(prog[0].arity == 1);
+    CHECK(prog[0].arity() == 1);
     CHECK(prog[0].qubits[0] == 0);
-    CHECK(prog[0].matrix_idx != NO_MATRIX);
+    CHECK(prog[0].payload.matrix_idx != NO_MATRIX);
 
     REQUIRE(mod.unitary_pool.num_matrices() == 1);
-    auto stored = mod.unitary_pool.get(prog[0].matrix_idx);
+    auto stored = mod.unitary_pool.get(prog[0].payload.matrix_idx);
     REQUIRE(stored.size() == 4);
     CHECK_THAT(stored[0].real(), Catch::Matchers::WithinAbs(s, 1e-12));
     CHECK_THAT(stored[3].real(), Catch::Matchers::WithinAbs(-s, 1e-12));
@@ -407,7 +400,7 @@ TEST_CASE("QuantumCircuit applies a custom 2-qubit unitary", "[builder][unitary]
     auto mod = std::move(qc).release();
 
     REQUIRE(mod.gate_count() == 1);
-    CHECK(mod.program()[0].arity == 2);
+    CHECK(mod.program()[0].arity() == 2);
     CHECK(mod.unitary_pool.total_elements() == 16);
 }
 
@@ -434,7 +427,7 @@ TEST_CASE("QuantumCircuit barrier with specific qubits", "[builder][directive]")
     auto prog = mod.program();
 
     CHECK(prog[0].type == GateType::BARRIER);
-    CHECK(prog[0].arity == 3);
+    CHECK(prog[0].arity() == 3);
     CHECK(prog[0].qubits[0] == 0);
     CHECK(prog[0].qubits[1] == 1);
     CHECK(prog[0].qubits[2] == 2);
@@ -447,7 +440,7 @@ TEST_CASE("QuantumCircuit barrier with no qubits (global barrier)", "[builder][d
 
     REQUIRE(mod.gate_count() == 1);
     CHECK(mod.program()[0].type == GateType::BARRIER);
-    CHECK(mod.program()[0].arity == 0);
+    CHECK(mod.program()[0].arity() == 0);
 }
 
 TEST_CASE("QuantumCircuit barrier clamps to 4 qubits", "[builder][directive]") {
@@ -456,7 +449,7 @@ TEST_CASE("QuantumCircuit barrier clamps to 4 qubits", "[builder][directive]") {
     auto mod = std::move(qc).release();
 
     REQUIRE(mod.gate_count() == 1);
-    CHECK(mod.program()[0].arity == 4);
+    CHECK(mod.program()[0].arity() == 4);
     CHECK(mod.program()[0].qubits[3] == 3);
 }
 
@@ -469,7 +462,7 @@ TEST_CASE("QuantumCircuit measure single qubit", "[builder][directive]") {
     auto prog = mod.program();
 
     CHECK(prog[0].type == GateType::MEASURE);
-    CHECK(prog[0].arity == 1);
+    CHECK(prog[0].arity() == 1);
     CHECK(prog[0].qubits[0] == 0);
 }
 
@@ -700,15 +693,7 @@ TEST_CASE("NO_MATRIX sentinel is UINT32_MAX", "[ir]") {
     STATIC_REQUIRE(NO_MATRIX == UINT32_MAX);
 }
 
-TEST_CASE("Standard gates have matrix_idx == NO_MATRIX", "[ir]") {
-    QuantumCircuit qc(2);
-    qc.h(0).cx(0, 1).rx(0, 1.0);
-    auto mod = std::move(qc).release();
 
-    for (const auto& instr : mod.program()) {
-        CHECK(instr.matrix_idx == NO_MATRIX);
-    }
-}
 
 // ---------------------
 // SECTION 16: GateFlags
@@ -728,7 +713,7 @@ TEST_CASE("Flags default to NONE in builder-produced instructions", "[ir][flags]
     auto mod = std::move(qc).release();
 
     for (const auto& instr : mod.program()) {
-        CHECK(instr.flags == gate_flags::NONE);
+        CHECK(instr.flags() == gate_flags::NONE);
     }
 }
 

@@ -100,13 +100,13 @@ namespace qlassical::backend {
 
                     // Single-qubit parametric (arity 1, params > 0)
                     case GateType::RX:
-                        apply_rx(instr.qubits[0], instr.params[0]);
+                        apply_rx(instr.qubits[0], instr.payload.param);
                         break;
                     case GateType::RY:
-                        apply_ry(instr.qubits[0], instr.params[0]);
+                        apply_ry(instr.qubits[0], instr.payload.param);
                         break;
                     case GateType::RZ:
-                        apply_rz(instr.qubits[0], instr.params[0]);
+                        apply_rz(instr.qubits[0], instr.payload.param);
                         break;
 
                     // Two-qubit (arity 2)
@@ -159,8 +159,7 @@ namespace qlassical::backend {
             }
         }
 
-        [[nodiscard]] std::span<const std::complex<double>>
-        state() const override {
+        [[nodiscard]] std::span<const std::complex<double>> state() const override {
             return sv_.amplitudes();
         }
 
@@ -333,7 +332,7 @@ namespace qlassical::backend {
         //  For UNITARY and FUSED_BLOCK gates, the matrix is runtime data
         //  from the UnitaryPool. The idea is:
         //
-        //    1. Retrieve the dense matrix: pool.get(instr.matrix_idx)
+        //    1. Retrieve the dense matrix: pool.get(instr.payload.matrix_idx)
         //    2. Determine the target qubits: instr.qubits[0..arity-1]
         //    3. For each sub-block of 2^k amplitudes (k = arity):
         //       a. Gather the 2^k amplitudes into a local buffer
