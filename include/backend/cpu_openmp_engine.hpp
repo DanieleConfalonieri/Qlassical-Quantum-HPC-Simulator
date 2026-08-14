@@ -507,22 +507,88 @@ namespace qlassical::backend {
         //    1. Retrieve the dense matrix: pool.get(instr.payload.matrix_idx)
         //    2. Determine the target qubits: instr.qubits[0..arity-1]
         //    3. For each sub-block of 2^k amplitudes (k = arity):
-        //       a. Gather the 2^k amplitudes into a local buffer
+        //       a. Gather the 2^k amplitudes into a local buffer (Eigen needs contiguous aligned chunks of memory)
         //       b. Apply U * buffer
         //       c. Scatter the results back
         //
         //  This has to be done within the Eigen framework
 
         void apply_unitary(const GateInstr& instr, const UnitaryPool& pool) {
-            // TODO: implement generic unitary application via Eigen::Map
-            (void)instr;
-            (void)pool;
+            // 1. Extract the arity and the unitary matrix from the pool
+            const uint8_t arity = instr.arity();
+            const std::size_t block_size = std::size_t{1} << arity; // 2^k
+
+            auto matrix_span = pool.get(instr.payload.matrix_idx);
+            // We are mapping the content of the referenced region of memory into an Eigen matrix.
+            using MatrixType = Eigen::Map<const Eigen::Matrix<std::complex<double>, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
+            MatrixType U(matrix_span.data(), block_size, block_size);
+        
+
+            // 2. Order target qubits to correctly generate the base_idx
+            std::array<uint8_t, 4> sorted_qubits = {0};
+            std::copy_n(instr.qubits, arity, sorted_qubits.begin());
+            std::sort(sorted_qubits.begin(), sorted_qubits.begin() + arity);
+
+            // 3. Precompute the Gather/Scatter offsets
+            // We are computing the bytes offsets to sum to the base:idx to find the configurations |00..0>, |00..1>, ..., |11..1> of the target qubits.
+            std::array<std::size_t, 16> scatter_offsets = {0};
+
+            for (std::size_t j = 0; j < block_size; ++j) {
+                std::size_t offset = 0;
+                for (uint8_t q = 0; q < arity; ++q) {
+                    if ((j >> q) & 1) {
+                        offset |= (std::size_t{1} << instr.qubits[q]);
+                    }
+                }
+                scatter_offsets[j] = offset;
+            }
+
+            const std::size_t iters = sv_.dimension() >> arity;
+            auto* amp = sv_.data();
+
+            // 4. Parallel loop
+            #pragma omp parallel
+            {
+                // Preallocated buffers on the stack of each thread, to avoid dynamic allocations.
+                alignas(32) std::array<std::complex<double>, 16> buf_in;
+                alignas(32) std::array<std::complex<double>, 16> buf_out;
+                
+                Eigen::Map<Eigen::VectorXcd> v_in(buf_in.data(), block_size);
+                Eigen::Map<Eigen::VectorXcd> v_out(buf_out.data(), block_size);
+
+                #pragma omp for schedule(static)
+                for (int64_t i = 0; i < static_cast<int64_t>(iters); ++i) {
+                    // Construction of the base_idx:
+                    // Insert zero bits for target qubits.
+                    std::size_t base_idx = static_cast<std::size_t>(i);
+                    for (uint8_t q = 0; q < arity; ++q) {
+                        const std::size_t low_mask = (std::size_t{1} << sorted_qubits[q]) - 1;
+                        const std::size_t low = base_idx & low_mask;
+                        const std::size_t high = (base_idx & ~low_mask) << 1;
+                        base_idx = low | high;
+                    }
+
+                    // 1. Gather useing precomputed offsets
+                    for (std::size_t j = 0; j < block_size; ++j) {
+                        buf_in[j] = amp[base_idx | scatter_offsets[j]];
+                    }
+
+                    // 2. Mathematical calculation via Eigen (maximum L1 saturation)
+                    // The product U * v_in generates vectorized code AVX2/AVX512.
+                    v_out.noalias() = U * v_in; //noalias prevents Eigen from creating a temporary for the result, which is safe here since v_out and v_in are distinct.
+
+                    // 3. Vectorized scatter
+                    for (std::size_t j = 0; j < block_size; ++j) {
+                        amp[base_idx | scatter_offsets[j]] = buf_out[j];
+                    }
+                }
+            }
         }
 
         // -----------
         // Measurement 
         // -----------
-        //
+
         //  Measurement in an exact CPUStateVector simulator requires:
         //    1. Compute marginal probability with Born's rule
         //    2. Generate random number r
