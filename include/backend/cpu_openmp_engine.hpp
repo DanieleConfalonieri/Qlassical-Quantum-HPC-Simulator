@@ -240,6 +240,43 @@ namespace qlassical::backend {
             }
         }
 
+        // We generalize the pattern for three-qubit gates.
+        template <typename KernelFunc>
+        inline void triple_hole_loop(int16_t q0, int16_t q1, int16_t q2, KernelFunc&& kernel) {
+            // A 3-qubit gate isolates a subspace of dimension N/8.
+            const std::size_t iters = sv_.dimension() / 8;
+            
+            
+            const int16_t q_min = std::min({q0, q1, q2});
+            const int16_t q_max = std::max({q0, q1, q2});
+            const int16_t q_mid = q0 + q1 + q2 - q_min - q_max; // trick to find the middle qubit without sorting
+
+            // Here we define three masks, having 4 parts.
+            const std::size_t mask_low  = (std::size_t{1} << q_min) - 1;
+            const std::size_t mask_mid1 = (std::size_t{1} << (q_mid - q_min - 1)) - 1;
+            const std::size_t mask_mid2 = (std::size_t{1} << (q_max - q_mid - 1)) - 1;
+
+            #pragma omp parallel for schedule(static)
+            for (int64_t i = 0; i < static_cast<int64_t>(iters); ++i) {
+                const std::size_t idx = static_cast<std::size_t>(i);
+                
+                // 1. Extract the four parts.
+                const std::size_t low  = idx & mask_low;
+                const std::size_t mid1 = (idx >> q_min) & mask_mid1;
+                const std::size_t mid2 = (idx >> (q_mid - 1)) & mask_mid2;
+                const std::size_t high = idx >> (q_max - 2);
+
+                // 2. Reassemble with three holes(q_min, q_mid, q_max are 0 by construction).
+                const std::size_t base_idx = low 
+                                           | (mid1 << (q_min + 1)) 
+                                           | (mid2 << (q_mid + 1)) 
+                                           | (high << (q_max + 1));
+
+                // 3. Call the kernel with the base index.
+                std::forward<KernelFunc>(kernel)(base_idx);
+            }
+        }
+
         // Hadamard: H = (1/sqrt(2)) [[1, 1], [1, -1]]
         void apply_h(int16_t target) {
             const std::size_t half_dim = sv_.dimension()/2;
@@ -409,13 +446,13 @@ namespace qlassical::backend {
         // It works only on the pairs of amplitudes where the two qubits differ (|01⟩ and |10⟩).
         void apply_swap(int16_t q0, int16_t q1) {
             auto* amp = sv_.data();
-            const std::size_t m0 = std::size_t{1} << q0;
-            const std::size_t m1 = std::size_t{1} << q1;
+            const std::size_t mask0 = std::size_t{1} << q0;
+            const std::size_t mask1 = std::size_t{1} << q1;
 
-            double_hole_loop(q0, q1, [amp, m0, m1](std::size_t base_idx) {
+            double_hole_loop(q0, q1, [amp, mask0, mask1](std::size_t base_idx) {
                 // Construct the two indices |01⟩ and |10⟩
-                const std::size_t i01 = base_idx | m1; // q0 is 0, q1 is 1
-                const std::size_t i10 = base_idx | m0; // q0 is 1, q1 is 0
+                const std::size_t i01 = base_idx | mask1; // q0 is 0, q1 is 1
+                const std::size_t i10 = base_idx | mask0; // q0 is 1, q1 is 0
 
                 std::swap(amp[i01], amp[i10]);
             });
@@ -424,19 +461,40 @@ namespace qlassical::backend {
         // Toffoli (CCX): if both controls are |1>, flip target 
         void apply_ccx(int16_t c0, int16_t c1, int16_t target) {
             // TODO: implement -> doubly-controlled X
-            // Same bit-weaving as CX but with two control masks:
-            // if ((i & c0_mask) && (i & c1_mask)) { swap pair }
-            (void)c0;
-            (void)c1;
-            (void)target;
+            // We use the optimized triple_hole_loop strategy again to avoid
+            // branching and inefficiencies.
+            auto* amp = sv_.data();
+            const std::size_t ctrl_mask0 = std::size_t{1} << c0;
+            const std::size_t ctrl_mask1 = std::size_t{1} << c1;
+            const std::size_t tgt_mask   = std::size_t{1} << target;
+
+            const std::size_t ctrls_mask = ctrl_mask0 | ctrl_mask1;
+
+            triple_hole_loop(c0, c1, target, [amp, ctrls_mask, tgt_mask](std::size_t base_idx) {
+                // Building the index for c0=1, c1=1, target=0
+                const std::size_t i0 = base_idx | ctrls_mask;
+                // Building the index for c0=1, c1=1, target=1
+                const std::size_t i1 = i0 | tgt_mask;
+                
+                std::swap(amp[i0], amp[i1]);
+            });
         }
 
         // Fredkin (CSWAP): if control is |1>, swap two targets
         void apply_cswap(int16_t ctrl, int16_t q0, int16_t q1) {
             // TODO: implement -> controlled swap
-            (void)ctrl;
-            (void)q0;
-            (void)q1;
+            auto* amp = sv_.data();
+            const std::size_t ctrl_mask = std::size_t{1} << ctrl;
+            const std::size_t tgt_mask0   = std::size_t{1} << q0;
+            const std::size_t tgt_mask1   = std::size_t{1} << q1;
+
+            triple_hole_loop(ctrl, q0, q1, [amp, ctrl_mask, tgt_mask0, tgt_mask1](std::size_t base_idx) {
+                // Building the index for ctrl=1, q0=0, q1=1
+                const std::size_t i01 = base_idx | ctrl_mask | tgt_mask1; // control is |1⟩, q0 is |0⟩, q1 is |1⟩
+                const std::size_t i10 = base_idx | ctrl_mask | tgt_mask0; // control is |1⟩, q0 is |1⟩, q1 is |0⟩
+
+                std::swap(amp[i01], amp[i10]);
+            });
         }
 
         // -----------------------
