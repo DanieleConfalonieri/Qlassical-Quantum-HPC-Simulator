@@ -246,20 +246,47 @@ namespace qlassical::backend {
             // TODO: implement -> swap with phase
             // amp[i]          = -i * amp[i + stride]
             // amp[i + stride] =  i * amp[i]
-            (void)target;
+            const std::size_t half_dim = sv_.dimension()/2;
+            auto* amp = sv_.data();
+            openmp_loop(half_dim, [amp, target](std::size_t idx) {
+                const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
+                const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
+                const auto a0 = amp[i0];
+                const auto a1 = amp[i1];
+                // we avoid creating a temporary std::complex<double> for i; it is equivalent to swap real and imaginary parts with a sign change
+                // -i * a1  -> -i * (re1 + i*im1) = im1 - i*re1
+                amp[i0] = std::complex<double>(a1.imag(), -a1.real());
+                //  i * a0  ->  i * (re0 + i*im0) = -im0 + i*re0
+                amp[i1] = std::complex<double>(-a0.imag(), a0.real());
+            });
         }
 
         // Pauli-Z: Z = [[1, 0], [0, -1]] 
         void apply_z(int16_t target) {
             // TODO: implement -> negate amp[i + stride]
             // Only the |1⟩ component gets a sign flip
-            (void)target;
+            const std::size_t half_dim = sv_.dimension()/2;
+            auto* amp = sv_.data();
+            openmp_loop(half_dim, [amp, target](std::size_t idx) {
+                const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
+                const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
+                amp[i1] = -amp[i1]; // Negate the |1⟩ component
+            });
         }
 
         // S gate: S = [[1, 0], [0, i]]
         void apply_s(int16_t target) {
             // TODO: implement -> multiply |1> component by i
-            (void)target;
+            const std::size_t half_dim = sv_.dimension()/2;
+            auto* amp = sv_.data();
+            openmp_loop(half_dim, [amp, target](std::size_t idx) {
+                const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
+                const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
+                // again, avoid creating a temporary std::complex<double> for i; it is equivalent to swap real and imaginary parts with a sign change
+                const double re = amp[i1].real();
+                const double im = amp[i1].imag();
+                amp[i1] = std::complex<double>(-im, re);
+            });
         }
 
         // RX(theta): [[cos(theta/2), -i sin(theta/2)], [-i sin(theta/2), cos(theta/2)]] 
