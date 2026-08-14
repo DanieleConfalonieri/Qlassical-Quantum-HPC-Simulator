@@ -199,13 +199,44 @@ namespace qlassical::backend {
         //  placement becomes critical for data locality.
         
 
-        // Each kernel uses OpenMP; we generalize the pattern for all gates
+        // We generalize the pattern for all single-qubit gates.
         template <typename KernelFunc>
-        inline void openmp_loop(std::size_t iters, KernelFunc&& kernel) {
+        inline void single_target_loop(std::size_t iters, KernelFunc&& kernel) {
             
             #pragma omp parallel for schedule(static)
             for (int64_t i = 0; i < static_cast<int64_t>(iters); ++i) {
                 std::forward<KernelFunc>(kernel)(static_cast<std::size_t>(i)); // Perfect forwarding of the kernel function
+            }
+        }
+
+        // We generalize the pattern for two-qubit gates.
+        template <typename KernelFunc>
+        inline void double_hole_loop(int16_t q0, int16_t q1, KernelFunc&& kernel) {
+            // A 2-qubit gate acts on half of the state vector with respect to 1-qubit gates.
+            const std::size_t iters = sv_.dimension() / 4;
+            
+            const int16_t q_min = std::min(q0, q1);
+            const int16_t q_max = std::max(q0, q1);
+
+            // We implement the same bit-level trick as 1q gates, but now we have two "holes" in the index.
+            // We split the index into three parts: low, mid and high.
+            const std::size_t mask_low = (std::size_t{1} << q_min) - 1;
+            const std::size_t mask_mid = (std::size_t{1} << (q_max - q_min - 1)) - 1;
+
+            #pragma omp parallel for schedule(static)
+            for (int64_t i = 0; i < static_cast<int64_t>(iters); ++i) {
+                const std::size_t idx = static_cast<std::size_t>(i);
+                
+                // 1. Extract the three parts.
+                const std::size_t low  = idx & mask_low;
+                const std::size_t mid  = (idx >> q_min) & mask_mid;
+                const std::size_t high = idx >> (q_max - 1);
+
+                // 2. Reassemble with two holes (q0 and q1 are 0 by construction).
+                std::size_t base_idx = low | (mid << (q_min + 1)) | (high << (q_max + 1));
+
+                // 3. Call the kernel with the base index.
+                std::forward<KernelFunc>(kernel)(base_idx); 
             }
         }
 
@@ -215,7 +246,7 @@ namespace qlassical::backend {
             const double inv_sqrt2 = 1.0 / std::sqrt(2.0);
             auto* amp = sv_.data();
 
-            openmp_loop(half_dim, [amp, target, inv_sqrt2](std::size_t idx) {
+            single_target_loop(half_dim, [amp, target, inv_sqrt2](std::size_t idx) {
                 const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
                 const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
                 // Extract amplitudes
@@ -234,7 +265,7 @@ namespace qlassical::backend {
             const std::size_t half_dim = sv_.dimension()/2;
             auto* amp = sv_.data();
 
-            openmp_loop(half_dim, [amp, target](std::size_t idx) {
+            single_target_loop(half_dim, [amp, target](std::size_t idx) {
                 const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
                 const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
                 std::swap(amp[i0], amp[i1]);
@@ -248,7 +279,7 @@ namespace qlassical::backend {
             // amp[i + stride] =  i * amp[i]
             const std::size_t half_dim = sv_.dimension()/2;
             auto* amp = sv_.data();
-            openmp_loop(half_dim, [amp, target](std::size_t idx) {
+            single_target_loop(half_dim, [amp, target](std::size_t idx) {
                 const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
                 const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
                 const auto a0 = amp[i0];
@@ -267,7 +298,7 @@ namespace qlassical::backend {
             // Only the |1⟩ component gets a sign flip
             const std::size_t half_dim = sv_.dimension()/2;
             auto* amp = sv_.data();
-            openmp_loop(half_dim, [amp, target](std::size_t idx) {
+            single_target_loop(half_dim, [amp, target](std::size_t idx) {
                 const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
                 const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
                 amp[i1] = -amp[i1]; // Negate the |1⟩ component
@@ -279,7 +310,7 @@ namespace qlassical::backend {
             // TODO: implement -> multiply |1> component by i
             const std::size_t half_dim = sv_.dimension()/2;
             auto* amp = sv_.data();
-            openmp_loop(half_dim, [amp, target](std::size_t idx) {
+            single_target_loop(half_dim, [amp, target](std::size_t idx) {
                 const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
                 const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
                 // again, avoid creating a temporary std::complex<double> for i; it is equivalent to swap real and imaginary parts with a sign change
@@ -299,7 +330,7 @@ namespace qlassical::backend {
             const std::size_t half_dim = sv_.dimension() / 2;
             auto* amp = sv_.data();
 
-            openmp_loop(half_dim, [amp, target, cos, sin](std::size_t idx) {
+            single_target_loop(half_dim, [amp, target, cos, sin](std::size_t idx) {
                 const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
                 const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
                 
@@ -322,7 +353,7 @@ namespace qlassical::backend {
             const std::size_t half_dim = sv_.dimension() / 2;
             auto* amp = sv_.data();
 
-            openmp_loop(half_dim, [amp, target, cos, sin](std::size_t idx) {
+            single_target_loop(half_dim, [amp, target, cos, sin](std::size_t idx) {
                 const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
                 const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
                 
@@ -337,14 +368,14 @@ namespace qlassical::backend {
         // RZ(theta): [[e^{-i*theta/2}, 0], [0, e^{i*theta/2}]] 
         void apply_rz(int16_t target, float theta) {
             const double half_theta = static_cast<double>(theta) * 0.5;
-            // Precompute the complex exponentials for efficiency
+            // Precompute the complex exponentials for efficiency   
             const std::complex<double> p0(std::cos(-half_theta), std::sin(-half_theta));
             const std::complex<double> p1(std::cos(half_theta), std::sin(half_theta));
             
             const std::size_t half_dim = sv_.dimension() / 2;
             auto* amp = sv_.data();
 
-            openmp_loop(half_dim, [amp, target, p0, p1](std::size_t idx) {
+            single_target_loop(half_dim, [amp, target, p0, p1](std::size_t idx) {
                 const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
                 const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
                 
@@ -358,23 +389,36 @@ namespace qlassical::backend {
             // TODO: implement -> controlled-X via bit masking
             //
             // Iterate over amplitude pairs that differ in bit 'target'.
-            // For each pair, check if bit 'control' is set in the index.
-            // If yes, swap the pair (apply X on target). If no, skip.
-            //
-            // const std::size_t ctrl_mask = std::size_t{1} << control;
-            // const std::size_t tgt_stride = std::size_t{1} << target;
-            // ...
-            // if (i & ctrl_mask) { std::swap(amp[i], amp[i + tgt_stride]); }
-            (void)control;
-            (void)target;
+            // For each pair, checking if bit 'control' is set in the index, would lead to divergence 
+            // and 50% of the times this would lead to a no-op.
+            // Instead, we define the custom logic to iterate only over the indices where control is |1⟩ in the controlled_2q_loop. 
+            // We just need to  swap the pair (apply X on target). 
+            auto* amp = sv_.data();
+            const std::size_t ctrl_mask = std::size_t{1} << control;
+            const std::size_t tgt_mask  = std::size_t{1} << target;
+
+            double_hole_loop(control, target, [amp, ctrl_mask, tgt_mask](std::size_t base_idx) {
+                const std::size_t i0 = base_idx | ctrl_mask; // control is |1⟩, target is |0⟩
+                const std::size_t i1 = base_idx | ctrl_mask | tgt_mask; // control is |1⟩, target is |1⟩
+
+                std::swap(amp[i0], amp[i1]); 
+            });
         }
 
         // SWAP: exchange amplitudes of two qubits
+        // It works only on the pairs of amplitudes where the two qubits differ (|01⟩ and |10⟩).
         void apply_swap(int16_t q0, int16_t q1) {
-            // TODO: implement -> swap amplitudes where q0 and q1 differ
-            // Decomposable as 3 CNOTs, but direct implementation is faster.
-            (void)q0;
-            (void)q1;
+            auto* amp = sv_.data();
+            const std::size_t m0 = std::size_t{1} << q0;
+            const std::size_t m1 = std::size_t{1} << q1;
+
+            double_hole_loop(q0, q1, [amp, m0, m1](std::size_t base_idx) {
+                // Construct the two indices |01⟩ and |10⟩
+                const std::size_t i01 = base_idx | m1; // q0 is 0, q1 is 1
+                const std::size_t i10 = base_idx | m0; // q0 is 1, q1 is 0
+
+                std::swap(amp[i01], amp[i10]);
+            });
         }
 
         // Toffoli (CCX): if both controls are |1>, flip target 
