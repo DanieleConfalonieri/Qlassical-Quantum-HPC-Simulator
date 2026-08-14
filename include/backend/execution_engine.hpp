@@ -4,6 +4,7 @@
 #include <complex>
 #include <cstdint>
 #include <span>
+#include <vector>
 #include <frontend/frontend.hpp>
 
 namespace qlassical::backend {
@@ -11,6 +12,18 @@ namespace qlassical::backend {
     class ExecutionEngine {
     public:
         virtual ~ExecutionEngine() = default;
+
+        // Reset the engine state (e.g. state vector to |0...0> and clear measurements)
+        virtual void reset() = 0;
+
+        // Set RNG seed for deterministic measurement outcomes
+        virtual void set_seed(uint64_t seed) = 0;
+
+        // Preallocate memory for measurements
+        virtual void reserve_measurements(std::size_t count) = 0;
+
+        // Retrieve recorded measurements
+        [[nodiscard]] virtual const std::vector<uint8_t>& measurements() const = 0;
 
         // The program is a span of GateInstr (hot instruction stream).
         // The pool provides runtime matrix data for CUSTOM/FUSED_BLOCK gates.

@@ -43,10 +43,23 @@ FetchContent_MakeAvailable(Catch2)
 # Catch2 v3 provides its CMake helpers here
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 
+FetchContent_Declare(
+    Eigen3
+    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+    GIT_TAG        3.4.0
+)
+FetchContent_MakeAvailable(Eigen3)
+
+target_link_libraries(qlassical INTERFACE Eigen3::Eigen)
+
 # Test configuration
 enable_testing()
 add_executable(test_frontend tests/frontend/test_frontend.cpp)
 target_link_libraries(test_frontend PRIVATE Catch2::Catch2WithMain qlassical)
 
+add_executable(test_backend tests/backend/test_backend.cpp)
+target_link_libraries(test_backend PRIVATE Catch2::Catch2WithMain qlassical)
+
 include(Catch)
 catch_discover_tests(test_frontend)
+catch_discover_tests(test_backend)
