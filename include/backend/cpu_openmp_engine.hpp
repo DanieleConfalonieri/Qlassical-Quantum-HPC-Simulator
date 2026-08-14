@@ -291,23 +291,66 @@ namespace qlassical::backend {
 
         // RX(theta): [[cos(theta/2), -i sin(theta/2)], [-i sin(theta/2), cos(theta/2)]] 
         void apply_rx(int16_t target, float theta) {
-            // TODO: implement -> parametric rotation around X axis
-            (void)target;
-            (void)theta;
+            const double half_theta = static_cast<double>(theta) * 0.5;
+            // Precompute cos and sin for efficiency
+            const double cos = std::cos(half_theta);
+            const double sin = std::sin(half_theta);
+            
+            const std::size_t half_dim = sv_.dimension() / 2;
+            auto* amp = sv_.data();
+
+            openmp_loop(half_dim, [amp, target, cos, sin](std::size_t idx) {
+                const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
+                const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
+                
+                const auto a0 = amp[i0];
+                const auto a1 = amp[i1];
+                
+                // Usual multiplication trick
+                // -i * s * a1 = s * (im1 - i*re1)
+                amp[i0] = cos * a0 + std::complex<double>(sin * a1.imag(), -sin * a1.real());
+                amp[i1] = std::complex<double>(sin * a0.imag(), -sin * a0.real()) + cos * a1;
+            });
         }
 
         // RY(theta): [[cos(theta/2), -sin(theta/2)], [sin(theta/2), cos(theta/2)]] 
         void apply_ry(int16_t target, float theta) {
-            // TODO: implement -> parametric rotation around Y axis
-            (void)target;
-            (void)theta;
+            const double half_theta = static_cast<double>(theta) * 0.5;
+            const double cos = std::cos(half_theta);
+            const double sin = std::sin(half_theta);
+            
+            const std::size_t half_dim = sv_.dimension() / 2;
+            auto* amp = sv_.data();
+
+            openmp_loop(half_dim, [amp, target, cos, sin](std::size_t idx) {
+                const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
+                const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
+                
+                const auto a0 = amp[i0];
+                const auto a1 = amp[i1];
+                
+                amp[i0] = cos * a0 - sin * a1;
+                amp[i1] = sin * a0 + cos * a1;
+            });
         }
 
         // RZ(theta): [[e^{-i*theta/2}, 0], [0, e^{i*theta/2}]] 
         void apply_rz(int16_t target, float theta) {
-            // TODO: implement -> parametric rotation around Z axis
-            (void)target;
-            (void)theta;
+            const double half_theta = static_cast<double>(theta) * 0.5;
+            // Precompute the complex exponentials for efficiency
+            const std::complex<double> p0(std::cos(-half_theta), std::sin(-half_theta));
+            const std::complex<double> p1(std::cos(half_theta), std::sin(half_theta));
+            
+            const std::size_t half_dim = sv_.dimension() / 2;
+            auto* amp = sv_.data();
+
+            openmp_loop(half_dim, [amp, target, p0, p1](std::size_t idx) {
+                const std::size_t i0 = qlassical::backend::utils::insert_zero_bit(idx, target);
+                const std::size_t i1 = qlassical::backend::utils::flip_target_bit(i0, target);
+                
+                amp[i0] *= p0;
+                amp[i1] *= p1;
+            });
         }
 
         // CNOT: if control is |1⟩, flip target
