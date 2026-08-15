@@ -57,7 +57,12 @@ enable_testing()
 add_executable(test_frontend tests/frontend/test_frontend.cpp)
 target_link_libraries(test_frontend PRIVATE Catch2::Catch2WithMain qlassical)
 
-add_executable(test_backend tests/backend/test_backend.cpp)
+add_executable(test_backend 
+    tests/backend/test_aligned_allocator.cpp
+    tests/backend/test_state_vector.cpp
+    tests/backend/test_engine_measure.cpp
+    tests/backend/test_engine_kernels.cpp
+)
 target_link_libraries(test_backend PRIVATE Catch2::Catch2WithMain qlassical)
 
 include(Catch)
