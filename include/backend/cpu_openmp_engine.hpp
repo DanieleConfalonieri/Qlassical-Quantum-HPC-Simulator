@@ -107,6 +107,26 @@ public:
 
   // Default move, deleted copy (inherited from ExecutionEngine +
   // CPUStateVector).
+    class CPUOpenMPEngine final : public ExecutionEngine {
+    public:
+        // Construction:
+        // Allocates and initializes a CPUStateVector for num_qubits qubits.
+        // Throws std::bad_alloc if the system cannot satisfy 2^n × 16 bytes! 
+        explicit CPUOpenMPEngine(uint32_t num_qubits) {
+            sv_.initialize(num_qubits);
+        }
+
+        // Construct from an existing CPUStateVector (zero-copy move).
+        explicit CPUOpenMPEngine(CPUStateVector&& sv) noexcept
+            : sv_(std::move(sv))
+        {}
+
+        // Transfer / assign an existing CPUStateVector (zero-copy move).
+        void set_state_vector(CPUStateVector&& sv) noexcept {
+            sv_ = std::move(sv);
+        }
+
+        // Default move, deleted copy (inherited from ExecutionEngine + CPUStateVector).
 
   // ExecutionEngine interface
 
@@ -216,6 +236,14 @@ public:
       }
     }
   }
+                    case GateType::GLOBAL_SWAP:
+                        // TODO: physical qubit permutation (streaming memory sweep)
+                        break;
+                    default:
+                        throw std::invalid_argument("CPUOpenMPEngine::execute: unrecognized GateType in instruction stream");
+                }
+            }
+        }
 
   [[nodiscard]] std::span<const std::complex<double>> state() const override {
     return sv_.amplitudes();
@@ -225,11 +253,16 @@ public:
     return sv_.num_qubits();
   }
 
-  // Direct StateVector access (testing/debugging)
+  // Direct CPUStateVector access (testing/debugging)
+  [[nodiscard]] CPUStateVector& state_vector() noexcept {
+            return sv_;
+        }
 
-  [[nodiscard]] const StateVector &state_vector() const noexcept {
-    return sv_;
+  // Extract / transfer ownership of the state vector (moved out with zero copy)
+  [[nodiscard]] CPUStateVector extract_state_vector() && noexcept {
+      return std::move(sv_);
   }
+
 
 private:
   CPUStateVector sv_;
