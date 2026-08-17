@@ -86,3 +86,68 @@ TEST_CASE("Deutsch Algorithm", "[integration][algos]") {
     }, false);
   }
 }
+
+
+TEST_CASE("Quantum Teleportation", "[integration][algos]") {
+  // Teleport an arbitrary state |phi> from q0 to q2.
+  // We use a state with a complex relative phase to prove phase preservation.
+  // |phi> = alpha |0> + beta |1>
+  std::complex<double> alpha = {1.0 / std::sqrt(3.0), 0.0};
+  std::complex<double> beta  = {0.0, std::sqrt(2.0 / 3.0)};
+  
+  // Initial state: q0=|phi>, q1=|0>, q2=|0>.
+  auto initial_state = std::vector<std::complex<double>>(8, {0.0, 0.0});
+  initial_state[0] = alpha; // |000> (q0=0)
+  initial_state[1] = beta;  // |001> (q0=1)
+
+  CPUOpenMPEngine engine(initial_state, std::optional<uint64_t>(seed), 2);
+  
+  // 1. Entanglement on Alice's 
+  QuantumCircuit alice_circuit(3);
+  alice_circuit.h(1).cx(1, 2);         // 1. Entangled pair between Alice(q1) and Bob(q2)
+  alice_circuit.cx(0, 1).h(0);         // 2. Alice entangles her qubit |phi>(q0)
+  alice_circuit.measure(0).measure(1); // 3. Alice measures q0 and q1
+  
+  // 2. Proceed with the partial measurement (the engine stores the collapsed StateVector!)
+  engine.execute(alice_circuit.release());
+  
+  auto ms = engine.measurements();
+  REQUIRE(ms.size() == 2);
+  uint8_t m0 = ms[0];
+  uint8_t m1 = ms[1];
+  
+  // 3: Bob's Correction operations, based on measurements
+  QuantumCircuit bob_circuit(3);
+  if (m1 == 1) bob_circuit.x(2);
+  if (m0 == 1) bob_circuit.z(2);
+  
+  // Execute Bob's circuit on the same engine, continuing the simulation
+  engine.execute(bob_circuit.release());
+  
+  // VERIFICATION
+  // q0 and q1 collapsed to m0 and m1. q2 should perfectly contain |phi>.
+  // Final expected computational basis states:
+  // |0 m1 m0> -> Index: (0 * 4) + (m1 * 2) + m0
+  // |1 m1 m0> -> Index: (1 * 4) + (m1 * 2) + m0
+  std::size_t idx_0 = (m1 << 1) | m0;
+  std::size_t idx_1 = 4 | (m1 << 1) | m0;
+  
+  auto state = engine.state();
+  
+  // Verify probabilities
+  REQUIRE_THAT(std::norm(state[idx_0]), Catch::Matchers::WithinAbs(std::norm(alpha), 1e-6));
+  REQUIRE_THAT(std::norm(state[idx_1]), Catch::Matchers::WithinAbs(std::norm(beta), 1e-6));
+  
+  // Verify that the relative complex phase was preserved
+  auto ratio = state[idx_1] / state[idx_0];
+  auto expected_ratio = beta / alpha;
+  REQUIRE_THAT(std::real(ratio), Catch::Matchers::WithinAbs(std::real(expected_ratio), 1e-6));
+  REQUIRE_THAT(std::imag(ratio), Catch::Matchers::WithinAbs(std::imag(expected_ratio), 1e-6));
+  
+  // Verify absolute collapse (all other amplitudes must be 0)
+  for (std::size_t i = 0; i < 8; ++i) {
+      if (i != idx_0 && i != idx_1) {
+          REQUIRE_THAT(std::norm(state[i]), Catch::Matchers::WithinAbs(0.0, 1e-6));
+      }
+  }
+}
