@@ -65,6 +65,12 @@ add_executable(test_backend
 )
 target_link_libraries(test_backend PRIVATE Catch2::Catch2WithMain qlassical)
 
+add_executable(test_integration
+    tests/integration/algos_no_optimization.cpp
+)
+target_link_libraries(test_integration PRIVATE Catch2::Catch2WithMain qlassical)
+
 include(Catch)
 catch_discover_tests(test_frontend)
 catch_discover_tests(test_backend)
+catch_discover_tests(test_integration)

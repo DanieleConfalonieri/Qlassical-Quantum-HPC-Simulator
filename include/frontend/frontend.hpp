@@ -223,7 +223,7 @@ namespace qlassical {
 
         // Transfer ownership to the compiler 
         // Must be called on an rvalue: std::move(qc).release()
-        [[nodiscard]] IRModule release() && noexcept {
+        [[nodiscard]] IRModule release() noexcept {
             return std::move(module_);
         }
 

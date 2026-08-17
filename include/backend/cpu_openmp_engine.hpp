@@ -61,6 +61,9 @@ namespace qlassical::backend {
 
 class CPUOpenMPEngine final : public ExecutionEngine {
 public:
+  // Bring base class overloads into scope to prevent name hiding
+  using ExecutionEngine::execute;
+
   // Construction:
   // Allocates and initializes a CPUStateVector for num_qubits qubits.
   // Throws std::bad_alloc if the system cannot satisfy 2^n × 16 bytes!
