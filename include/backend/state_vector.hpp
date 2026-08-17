@@ -12,6 +12,8 @@ namespace qlassical::backend {
 
         // Allocates and initializes the state vector for num_qubits qubits
         virtual void initialize(uint32_t num_qubits) = 0;
+        // Allocates and initializes the state vector with the provided amplitudes, checking that is a valid state vector (i.e., the amplitudes are normalized)
+        virtual void initialize(std::span<const std::complex<double>> initial_amplitudes) = 0;
 
         // Query methods
         [[nodiscard]] virtual uint32_t num_qubits() const noexcept = 0;

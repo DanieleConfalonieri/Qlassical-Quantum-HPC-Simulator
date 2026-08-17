@@ -75,6 +75,39 @@ namespace qlassical::backend {
             amplitudes_[0] = Amplitude{1.0, 0.0};
         }
 
+        void initialize(std::span<const Amplitude> initial_state) override {
+            const std::size_t dim = initial_state.size();
+            
+            // The size must be a power of 2 and greater than 0.
+            if (dim == 0 || (dim & (dim - 1)) != 0) { 
+                throw std::invalid_argument("CPUStateVector: La dimensione dello stato in ingresso deve essere una potenza di 2.");
+            }
+            
+            num_qubits_ = static_cast<uint32_t>(std::log2(dim));
+            
+            // Check the normaliztion condition.
+            double norm_sq = 0.0;
+            const auto dim_signed = static_cast<int64_t>(dim);
+            
+            #pragma omp parallel for reduction(+:norm_sq) schedule(static)
+            for (int64_t i = 0; i < dim_signed; ++i) {
+                norm_sq += std::norm(initial_state[static_cast<std::size_t>(i)]);
+            }
+            
+            // L'aritmetica floating point richiede una tolleranza. Non usare mai == 1.0.
+            if (std::abs(norm_sq - 1.0) > 1e-6) {
+                throw std::invalid_argument("CPUStateVector: the state vector provided is not normalized (norm squared != 1.0).");
+            }
+            
+            // Actual allocation and initialization. This will also use NUMA first-touch policy.
+            amplitudes_.resize(dim);
+
+            #pragma omp parallel for schedule(static)
+            for (int64_t i = 0; i < dim_signed; ++i) {
+                amplitudes_[static_cast<std::size_t>(i)] = initial_state[static_cast<std::size_t>(i)];
+            }
+        }
+
         // Span Accessors (zero-copy views) 
 
         [[nodiscard]] std::span<Amplitude> amplitudes() noexcept {

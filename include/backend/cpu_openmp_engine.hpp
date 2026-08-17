@@ -64,6 +64,9 @@ public:
   // Construction:
   // Allocates and initializes a CPUStateVector for num_qubits qubits.
   // Throws std::bad_alloc if the system cannot satisfy 2^n × 16 bytes!
+  // * num_qubits: number of qubits in the simulation
+  // * seed: optional seed for the random number generator (for measurement)
+  // * reserve_meas: optional preallocation for the measurement vector (default 0)
   explicit CPUOpenMPEngine(uint32_t num_qubits,
                            std::optional<uint64_t> seed = std::nullopt,
                            std::size_t reserve_meas = 0) { 

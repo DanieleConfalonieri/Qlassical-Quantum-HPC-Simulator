@@ -8,7 +8,7 @@ using namespace qlassical;
 using namespace qlassical::backend;
 
 // Helper to easily construct gate instructions
-GateInstr make_gate(GateType t, uint8_t q0 = 255, uint8_t q1 = 255, uint8_t q2 = 255, float param = 0.0f, uint32_t mat_idx = 0) {
+inline GateInstr make_gate(GateType t, uint8_t q0 = 255, uint8_t q1 = 255, uint8_t q2 = 255, float param = 0.0f, uint32_t mat_idx = 0) {
     GateInstr g{};
     g.type = t;
     
