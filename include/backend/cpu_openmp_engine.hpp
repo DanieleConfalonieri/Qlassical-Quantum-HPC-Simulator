@@ -84,6 +84,24 @@ public:
     }
   }
 
+  // Construction from an initial state vector:
+  explicit CPUOpenMPEngine(std::span<const std::complex<double>> initial_state,
+                           std::optional<uint64_t> seed = std::nullopt,
+                           std::size_t reserve_meas = 0) {
+    sv_.initialize(initial_state);
+    
+    if (seed.has_value()) {
+        rng_.seed(seed.value());
+    } else {
+        std::random_device rd;
+        rng_.seed(rd());
+    }
+    
+    if (reserve_meas > 0) {
+        measurements_.reserve(reserve_meas);
+    }
+  }
+
   // Default move, deleted copy (inherited from ExecutionEngine +
   // CPUStateVector).
 
@@ -93,6 +111,12 @@ public:
     sv_.initialize(sv_.num_qubits());
     measurements_.clear();
   }
+
+  // Reset to an arbitrary state vector (must be normalized).
+  void reset(std::span<const std::complex<double>> initial_state) override {
+        sv_.initialize(initial_state);
+        measurements_.clear();
+    }
 
   void set_seed(uint64_t seed) override {
     rng_.seed(seed);

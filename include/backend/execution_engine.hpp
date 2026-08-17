@@ -16,6 +16,9 @@ namespace qlassical::backend {
         // Reset the engine state (e.g. state vector to |0...0> and clear measurements)
         virtual void reset() = 0;
 
+        // Reset to an arbitrary state
+        virtual void reset(std::span<const std::complex<double>> initial_state) = 0;
+
         // Set RNG seed for deterministic measurement outcomes
         virtual void set_seed(uint64_t seed) = 0;
 
