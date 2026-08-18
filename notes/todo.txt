@@ -1,9 +1,13 @@
-A CASA:
+MEASUREMENT: 
+- Ottimizzare per misurazione totale dello StateVector -> Inverse Transform Sampling/ Smirnov Transform (chunked con OpenMP)
+- Overload: apply_measure(target, shots) -> esegue gli shots senza far collassare lo StateVector (solo all'ultima misura, in caso dopo ci fosse un ulteriore 
+apply_measure con target diverso)
 
-- Completare l'implementazione di ogni QuantumGate nel BackEnd
+CircuitRunner:
+- Fix: engine singolo (preserva lo StateVector tra un circuito e l'altro)
+- Aggiungi metodo add_circuit() (fare in modo che run() tenga conto di dove si è arrivati nel vettore di circuiti) + eventuale run_all() che resetta tutto e ri-runna.
+- Interfaccia: aggiungere modo di accedere allo StateVector e alle misurazioni effettuate
 
-
- 
 
 ORA:
 
@@ -15,16 +19,9 @@ ORA:
 
 - Organizzare il Middleware.
 
-- Cercare di capire se si riesce a comprimere la GateInstr a 16 byte.
-
 - Euristica di scambio.
   - Windowing con valore W -> massimo numero di qubit coinvolti, non un numero fisso di GateInstr.
   - W si basa sul massimo stride che ci possiamo permettere per rimanere nella NUMA region.
   - Valutazione costi di transizione e permanenza e Swap generale se Costo_P > Costo_T
 
-- Definire bene il CircuitRunner.
-
-- A quanti qubit vogliamo limitarci?
-
-- Breakpoints? Interfaccia da terminale?
 
