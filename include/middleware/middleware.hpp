@@ -110,6 +110,23 @@ namespace qlassical::middleware {
         }
     };
 
+    class DAG {
+        // vector di entries
+
+
+        //TODO: ragionavamo sugli index, conviene al posto di pointer chasing? Non lavorare sullo Heap, ma allocare i nodes di fila nel vector.
+
+        // class DAGNode {
+        //     GateInstr instr;
+        //     std::vector<DAGNode*> parents;
+        //     std::vector<DAGNode*> children;
+        //}
+
+        // static DAG build_dag(const IRModule& module); 
+
+        // optimize() -> fuse gates,....lavora sul DAG stesso.
+    }; 
+
 } // namespace qlassical::middleware
 
 namespace qlassical {
