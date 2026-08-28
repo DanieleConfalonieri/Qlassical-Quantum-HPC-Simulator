@@ -4,10 +4,12 @@
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
+#include <optional>
 #include <vector>
 #include <span>
 #include <Eigen/Dense>
 #include <frontend/frontend.hpp>
+#include <middleware/hw_topology.hpp>
 
 namespace qlassical::middleware {
 
@@ -29,10 +31,61 @@ namespace qlassical::middleware {
     public:
         virtual ~WindowingCostModel() = default;
         
-        virtual bool should_swap(
-            std::span<const uint16_t> active_logical_qubits,
-            std::span<const uint16_t> logical_to_physical
+        virtual std::optional<std::pair<uint16_t, uint16_t>> evaluate_swap(
+            std::span<const uint32_t> log_frequencies,
+            std::span<const uint16_t> log_to_phys,
+            std::span<const uint16_t> phys_to_log
         ) const = 0;
+        
+        virtual uint16_t get_k_safe() const = 0;
+    };
+
+    class GreedyCacheCostModel : public WindowingCostModel {
+    private:
+        uint16_t k_safe;
+    public:
+        explicit GreedyCacheCostModel(uint16_t safe_limit) : k_safe(safe_limit) {}
+
+        uint16_t get_k_safe() const override { return k_safe; }
+
+        std::optional<std::pair<uint16_t, uint16_t>> evaluate_swap(
+            std::span<const uint32_t> log_frequencies,
+            std::span<const uint16_t> log_to_phys,
+            std::span<const uint16_t> phys_to_log
+        ) const override {
+            uint16_t p = 0xFFFF;
+            uint32_t p_freq = 0;
+            for (std::size_t l = 0; l < log_frequencies.size(); ++l) {
+                if (log_frequencies[l] > 0) {
+                    uint16_t phys = log_to_phys[l];
+                    if (phys > k_safe) {
+                        p = phys;
+                        p_freq = log_frequencies[l];
+                        break;
+                    }
+                }
+            }
+
+            if (p == 0xFFFF) return std::nullopt;
+
+            uint16_t v = 0xFFFF;
+            uint32_t min_freq = UINT32_MAX;
+            for (std::size_t l = 0; l < log_frequencies.size(); ++l) {
+                uint16_t phys = log_to_phys[l];
+                if (phys <= k_safe) {
+                    if (log_frequencies[l] < min_freq) {
+                        min_freq = log_frequencies[l];
+                        v = phys;
+                        if (min_freq == 0) break;
+                    }
+                }
+            }
+
+            if (v != 0xFFFF && p_freq > min_freq) {
+                return std::make_pair(p, v);
+            }
+            return std::nullopt;
+        }
     };
 
     // --------------------------------------------------
@@ -54,6 +107,7 @@ namespace qlassical::middleware {
     public:
         UnitaryPool unitary_pool;
         std::vector<DAGNode> nodes;
+        std::vector<GateInstr> rewritten_stream;
 
         // Builds the DAG in O(N) using a frontier approach
         // Executes reserve() to eliminate dynamic reallocations
@@ -107,13 +161,18 @@ namespace qlassical::middleware {
         // Flattens the DAG back into a linear instruction stream, bypassing fused nodes
         IRModule release(uint32_t num_qubits) && {
             IRModule optimized_module(num_qubits);
-            optimized_module.gate_stream.reserve(nodes.size());
             
-            for (const auto& node : nodes) {
-                if (!node.is_fused) {
-                    optimized_module.gate_stream.push_back(node.instr);
+            if (!rewritten_stream.empty()) {
+                optimized_module.gate_stream = std::move(rewritten_stream);
+            } else {
+                optimized_module.gate_stream.reserve(nodes.size());
+                for (const auto& node : nodes) {
+                    if (!node.is_fused) {
+                        optimized_module.gate_stream.push_back(node.instr);
+                    }
                 }
             }
+            
             // Move the updated unitary pool into the reconstructed module
             optimized_module.unitary_pool = std::move(unitary_pool);
             return optimized_module;
@@ -307,8 +366,10 @@ namespace qlassical::middleware {
             pass_gate_fusion(dag);
             
             // 3. Qubit Windowing Pass (JIT Streamer)
-            // Example concrete cost model would be passed here
-            // pass_qubit_windowing(dag, cost_model, module);
+            CPUHwlocTopology topology;
+            uint16_t k_safe = topology.get_safe_qubit_limit();
+            GreedyCacheCostModel cost_model(k_safe);
+            pass_qubit_windowing(dag, cost_model, module.num_qubits);
             
             // 4. Release optimized DAG back to module
             module = std::move(dag).release(module.num_qubits);
@@ -494,27 +555,88 @@ namespace qlassical::middleware {
             }
         }
         
-        void pass_qubit_windowing(DAG& dag, const WindowingCostModel& cost_model, IRModule& module) {
+    public:
+        void pass_qubit_windowing(DAG& dag, const WindowingCostModel& cost_model, uint32_t num_qubits) {
             // JIT Streamer Pass
-            std::vector<uint16_t> logical_to_physical(module.num_qubits);
-            for(uint16_t i = 0; i < module.num_qubits; ++i) logical_to_physical[i] = i;
+            std::vector<uint16_t> log_to_phys(num_qubits);
+            std::vector<uint16_t> phys_to_log(num_qubits);
+            for(uint32_t i = 0; i < num_qubits; ++i) {
+                log_to_phys[i] = i;
+                phys_to_log[i] = i;
+            }
+
+            dag.rewritten_stream.reserve(dag.nodes.size());
+            const std::size_t W = 30; // Look-ahead window size
+            std::vector<uint32_t> frequencies(num_qubits, 0);
 
             // Traverse DAG topologically
-            for (const auto& node : dag.nodes) {
-                if (node.is_fused) continue;
+            for (std::size_t i = 0; i < dag.nodes.size(); ++i) {
+                if (dag.nodes[i].is_fused) continue;
 
-                // Evaluate upcoming working set of active logical qubits
-                // std::vector<uint16_t> active_qubits = ...
-                
-                /*
-                if (cost_model.should_swap(active_qubits, logical_to_physical)) {
-                    // Inject GLOBAL_SWAP operations to move active qubits to physical indices 0-4
-                    // Update logical_to_physical mapping table
+                // Look-ahead to compute logical frequencies
+                std::fill(frequencies.begin(), frequencies.end(), 0);
+                std::size_t count = 0;
+                for (std::size_t j = i; j < dag.nodes.size() && count < W; ++j) {
+                    if (dag.nodes[j].is_fused) continue;
+                    for (uint8_t k = 0; k < dag.nodes[j].instr.arity(); ++k) {
+                        uint16_t q = dag.nodes[j].instr.qubits[k];
+                        if (q < num_qubits) {
+                            frequencies[q]++;
+                        }
+                    }
+                    count++;
                 }
-                */
+                
+                bool needs_swap = false;
+                uint16_t safe_limit = cost_model.get_k_safe();
+                for (uint8_t k = 0; k < dag.nodes[i].instr.arity(); ++k) {
+                    uint16_t q = dag.nodes[i].instr.qubits[k];
+                    if (q < num_qubits && log_to_phys[q] > safe_limit) {
+                        needs_swap = true;
+                        break;
+                    }
+                }
 
-                // Rewrite node.instr.qubits using logical_to_physical mapping
+                // Swap Loop
+                if (needs_swap) {
+                    auto swap_pair = cost_model.evaluate_swap(frequencies, log_to_phys, phys_to_log);
+                    while (swap_pair.has_value()) {
+                        uint16_t p = swap_pair->first;
+                        uint16_t v = swap_pair->second;
+                        
+                        // Inject GLOBAL_SWAP instruction
+                        GateInstr swap_instr;
+                        swap_instr.type = GateType::GLOBAL_SWAP;
+                        swap_instr.set_arity(2);
+                        swap_instr.qubits[0] = p; // Output targets physical qubits for execution
+                        swap_instr.qubits[1] = v;
+                        
+                        dag.rewritten_stream.push_back(swap_instr);
+                        
+                        // Update mappings
+                        uint16_t log_p = phys_to_log[p];
+                        uint16_t log_v = phys_to_log[v];
+                        
+                        log_to_phys[log_p] = v;
+                        log_to_phys[log_v] = p;
+                        phys_to_log[p] = log_v;
+                        phys_to_log[v] = log_p;
+
+                        swap_pair = cost_model.evaluate_swap(frequencies, log_to_phys, phys_to_log);
+                    }
+                }
+
+                // Rewrite node.instr.qubits using log_to_phys mapping
+                GateInstr rewritten = dag.nodes[i].instr;
+                for (uint8_t k = 0; k < rewritten.arity(); ++k) {
+                    uint16_t log_q = rewritten.qubits[k];
+                    if (log_q < num_qubits) {
+                        rewritten.qubits[k] = log_to_phys[log_q];
+                    }
+                }
+                
                 // Emit rewritten instruction to the new output stream
+                dag.rewritten_stream.push_back(rewritten);
             }
         }
 
