@@ -19,6 +19,12 @@ endif()
 # OpenMP support for parallel backends
 find_package(OpenMP REQUIRED)
 
+# hwloc support for hardware awareness
+find_package(PkgConfig QUIET)
+if (PKG_CONFIG_FOUND)
+    pkg_check_modules(HWLOC hwloc)
+endif()
+
 # ------------------------
 # Qlassical - Core Library
 # ------------------------
@@ -32,6 +38,13 @@ target_include_directories(qlassical INTERFACE
 target_link_libraries(qlassical INTERFACE
     OpenMP::OpenMP_CXX
 )
+
+if (HWLOC_FOUND)
+    target_compile_definitions(qlassical INTERFACE ENABLE_HWLOC)
+    target_include_directories(qlassical INTERFACE ${HWLOC_INCLUDE_DIRS})
+    target_link_directories(qlassical INTERFACE ${HWLOC_LIBRARY_DIRS})
+    target_link_libraries(qlassical INTERFACE ${HWLOC_LIBRARIES})
+endif()
 
 # ------------
 # Dependencies 
@@ -82,8 +95,15 @@ target_link_libraries(test_integration PRIVATE Catch2::Catch2WithMain qlassical)
 add_executable(test_circuit_runner tests/frontend/test_circuit_runner.cpp)
 target_link_libraries(test_circuit_runner PRIVATE Catch2::Catch2WithMain qlassical)
 
+add_executable(test_middleware
+    tests/middleware/test_middleware.cpp
+    tests/middleware/test_fusion_math.cpp
+)
+target_link_libraries(test_middleware PRIVATE Catch2::Catch2WithMain qlassical)
+
 include(Catch)
 catch_discover_tests(test_frontend)
 catch_discover_tests(test_backend)
 catch_discover_tests(test_integration)
 catch_discover_tests(test_circuit_runner)
+catch_discover_tests(test_middleware)
