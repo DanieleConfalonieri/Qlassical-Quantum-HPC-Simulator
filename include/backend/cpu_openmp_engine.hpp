@@ -105,28 +105,18 @@ public:
     }
   }
 
+  // Construction from an existing CPUStateVector (zero-copy move).
+  explicit CPUOpenMPEngine(CPUStateVector&& sv) noexcept
+      : sv_(std::move(sv))
+  {}
+
+  // Transfer / assign an existing CPUStateVector (zero-copy move).
+  void set_state_vector(CPUStateVector&& sv) noexcept {
+      sv_ = std::move(sv);
+  }
+
   // Default move, deleted copy (inherited from ExecutionEngine +
   // CPUStateVector).
-    class CPUOpenMPEngine final : public ExecutionEngine {
-    public:
-        // Construction:
-        // Allocates and initializes a CPUStateVector for num_qubits qubits.
-        // Throws std::bad_alloc if the system cannot satisfy 2^n × 16 bytes! 
-        explicit CPUOpenMPEngine(uint32_t num_qubits) {
-            sv_.initialize(num_qubits);
-        }
-
-        // Construct from an existing CPUStateVector (zero-copy move).
-        explicit CPUOpenMPEngine(CPUStateVector&& sv) noexcept
-            : sv_(std::move(sv))
-        {}
-
-        // Transfer / assign an existing CPUStateVector (zero-copy move).
-        void set_state_vector(CPUStateVector&& sv) noexcept {
-            sv_ = std::move(sv);
-        }
-
-        // Default move, deleted copy (inherited from ExecutionEngine + CPUStateVector).
 
   // ExecutionEngine interface
 
@@ -236,14 +226,6 @@ public:
       }
     }
   }
-                    case GateType::GLOBAL_SWAP:
-                        // TODO: physical qubit permutation (streaming memory sweep)
-                        break;
-                    default:
-                        throw std::invalid_argument("CPUOpenMPEngine::execute: unrecognized GateType in instruction stream");
-                }
-            }
-        }
 
   [[nodiscard]] std::span<const std::complex<double>> state() const override {
     return sv_.amplitudes();
