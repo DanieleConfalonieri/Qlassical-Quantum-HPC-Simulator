@@ -28,6 +28,7 @@ endif()
 # System Dependencies (Replaces FetchContent)
 find_package(Catch2 3 REQUIRED)
 find_package(Eigen3 3.4 REQUIRED)
+find_package(benchmark REQUIRED)
 
 # ------------------------
 # Qlassical - Core Library
@@ -95,3 +96,9 @@ catch_discover_tests(test_integration)
 catch_discover_tests(test_circuit_runner)
 catch_discover_tests(test_middleware)
 catch_discover_tests(test_hw_topology)
+
+# ------------
+# Benchmarks
+# ------------
+add_executable(bench_hw_awareness benchmarks/bench_hw_awareness.cpp)
+target_link_libraries(bench_hw_awareness PRIVATE benchmark::benchmark qlassical)

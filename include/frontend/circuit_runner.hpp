@@ -58,9 +58,11 @@ namespace qlassical {
         //   circuit: Shared pointer to the QuantumCircuit to run.
         //   backend: Target backend execution architecture (default: CPU_OPENMP).
         explicit CircuitRunner(std::shared_ptr<QuantumCircuit> circuit,
-                               Backend backend = Backend::CPU_OPENMP)
+                               Backend backend = Backend::CPU_OPENMP,
+                               middleware::TranspilerConfig config = {})
             : backend_type_(backend)
             , middleware_()
+            , transpiler_config_(config)
         {
             if (!circuit) {
                 throw std::invalid_argument("CircuitRunner: circuit shared pointer cannot be null");
@@ -73,10 +75,12 @@ namespace qlassical {
         //   circuits: Vector of shared pointers to QuantumCircuit blocks executed sequentially.
         //   backend:  Target backend execution architecture (default: CPU_OPENMP).
         explicit CircuitRunner(std::vector<std::shared_ptr<QuantumCircuit>> circuits,
-                               Backend backend = Backend::CPU_OPENMP)
+                               Backend backend = Backend::CPU_OPENMP,
+                               middleware::TranspilerConfig config = {})
             : circuits_(std::move(circuits))
             , backend_type_(backend)
             , middleware_()
+            , transpiler_config_(config)
         {
             if (circuits_.empty()) {
                 throw std::invalid_argument("CircuitRunner: circuit block sequence cannot be empty");
@@ -130,7 +134,7 @@ namespace qlassical {
                 // -------------------------------------------------------------
                 // 2. MiddleEnd Transpilation: Target-aware optimization passes
                 // -------------------------------------------------------------
-                middleware_.transpile(module, backend_type_);
+                middleware_.transpile(module, backend_type_, transpiler_config_);
 
                 const uint32_t nq = module.num_qubits;
 
@@ -243,6 +247,7 @@ namespace qlassical {
         std::vector<std::shared_ptr<QuantumCircuit>> circuits_;
         Backend                                      backend_type_ = Backend::CPU_OPENMP;
         Middleware                                   middleware_;
+        middleware::TranspilerConfig                 transpiler_config_;
         std::unique_ptr<backend::ExecutionEngine>   engine_;
     };
 

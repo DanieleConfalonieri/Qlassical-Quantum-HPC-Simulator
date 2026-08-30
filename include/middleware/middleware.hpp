@@ -303,6 +303,11 @@ fuse_matrices(const GateMatrix &U1, std::span<const uint16_t> q1,
 // -----------------------------------------------------------
 // Middleware - Hardware-Aware Circuit Transpiler and Optimizer
 // -----------------------------------------------------------
+struct TranspilerConfig {
+  bool enable_gate_fusion = true;
+  bool enable_hw_awareness = true;
+};
+
 class Middleware {
 public:
   // Converts Standard Gates into Dense Matrices (Helper)
@@ -364,10 +369,10 @@ public:
   Middleware &operator=(const Middleware &) = default;
   ~Middleware() = default;
 
-  void transpile(IRModule &module, Backend backend = Backend::CPU_OPENMP) {
+  void transpile(IRModule &module, Backend backend = Backend::CPU_OPENMP, const TranspilerConfig& config = {}) {
     switch (backend) {
     case Backend::CPU_OPENMP:
-      transpile_cpu_openmp(module);
+      transpile_cpu_openmp(module, config);
       break;
     case Backend::MPI:
       transpile_mpi(module);
@@ -376,24 +381,28 @@ public:
       transpile_gpu(module);
       break;
     default:
-      transpile_cpu_openmp(module);
+      transpile_cpu_openmp(module, config);
       break;
     }
   }
 
 private:
-  void transpile_cpu_openmp(IRModule &module) {
+  void transpile_cpu_openmp(IRModule &module, const TranspilerConfig& config) {
     // 1. Build the DAG (O(N), contiguous memory, zero dynamic reallocations)
     DAG dag = DAG::build(std::move(module));
 
     // 2. Aggressive Gate Fusion Pass
-    pass_gate_fusion(dag);
+    if (config.enable_gate_fusion) {
+      pass_gate_fusion(dag);
+    }
 
     // 3. Qubit Windowing Pass (JIT Streamer)
-    CPUHwlocTopology topology;
-    uint16_t k_safe = topology.get_safe_qubit_limit();
-    ThresholdCostModel cost_model(k_safe);
-    pass_qubit_windowing(dag, cost_model, module.num_qubits);
+    if (config.enable_hw_awareness) {
+      CPUHwlocTopology topology;
+      uint16_t k_safe = topology.get_safe_qubit_limit();
+      ThresholdCostModel cost_model(k_safe);
+      pass_qubit_windowing(dag, cost_model, module.num_qubits);
+    }
 
     // 4. Release optimized DAG back to module
     module = std::move(dag).release(module.num_qubits);
