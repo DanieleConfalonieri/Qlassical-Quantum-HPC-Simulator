@@ -92,9 +92,10 @@ TEST_CASE("Qubit Windowing: The TLB Miss Hazard",
 
   DAG dag = DAG::build(std::move(module));
 
-  // Bypass CPUHwlocTopology and directly instantiate GreedyCacheCostModel
-  // cost_model(2); so k_safe = 2. Only physical indices 0, 1, 2 are fast.
-  GreedyCacheCostModel cost_model(2);
+  // Bypass CPUHwlocTopology and directly instantiate ThresholdCostModel
+  // cost_model(2, 1, 0); k_safe = 2, numa_penalty = 1, swap_penalty = 0.
+  // With swap_penalty = 0, it aggressively triggers swaps like the greedy model.
+  ThresholdCostModel cost_model(2, 1, 0);
 
   Middleware middleware;
   middleware.pass_qubit_windowing(dag, cost_model, 10);
