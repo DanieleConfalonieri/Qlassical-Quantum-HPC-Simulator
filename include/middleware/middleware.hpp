@@ -400,7 +400,7 @@ private:
     if (config.enable_hw_awareness) {
       CPUHwlocTopology topology;
       uint16_t k_safe = topology.get_safe_qubit_limit();
-      ThresholdCostModel cost_model(k_safe);
+      ThresholdCostModel cost_model(k_safe, 10 /*numa_penalty*/, 1 /*swap_penalty*/); // we force a high numa_penalty and low swap to insert some SWAPs.
       pass_qubit_windowing(dag, cost_model, module.num_qubits);
     }
 

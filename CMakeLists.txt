@@ -102,5 +102,5 @@ catch_discover_tests(test_hw_topology)
 # ------------
 add_executable(bench_hw_awareness benchmarks/bench_hw_awareness.cpp)
 target_link_libraries(bench_hw_awareness PRIVATE benchmark::benchmark qlassical)
-add_executable(bench_gate_fusion benchmarks/bench_hw_awareness.cpp)
-target_link_libraries(bench_gate_fusion PRIVATE benchmark::benchmark qlassical)
+add_executable(bench_scaling benchmarks/bench_scaling.cpp)
+target_link_libraries(bench_scaling PRIVATE benchmark::benchmark qlassical)
