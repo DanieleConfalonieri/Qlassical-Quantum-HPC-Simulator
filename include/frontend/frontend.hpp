@@ -48,7 +48,7 @@ namespace qlassical {
 
     namespace gate_flags {
         inline constexpr uint8_t NONE         = 0x00;
-        inline constexpr uint8_t ADJOINT      = 0x01;  // Apply gate† (conjugate transpose)
+        inline constexpr uint8_t ADJOINT      = 0x01;  // Apply conjugate transpose
         inline constexpr uint8_t FUSED_HEAD   = 0x02;  // First gate of a fused block
         inline constexpr uint8_t FUSED_TAIL   = 0x03;  // Last gate of a fused block
         inline constexpr uint8_t COMPILER_GEN = 0x04;  // Injected by Middle-End, mainly for debugging
@@ -221,7 +221,7 @@ namespace qlassical {
         QuantumCircuit(const QuantumCircuit&) = delete;
         QuantumCircuit& operator=(const QuantumCircuit&) = delete;
 
-        // Transfer ownership to the compiler 
+        // Transfer ownership to the transpiler 
         // Must be called on an rvalue: std::move(qc).release()
         [[nodiscard]] IRModule release() noexcept {
             return std::move(module_);
@@ -495,7 +495,7 @@ namespace qlassical {
     // gate arity from GateType for standard gates
     [[nodiscard]] constexpr uint8_t gate_arity(GateType type) noexcept {
         const auto v = static_cast<uint8_t>(type);
-        // Arity is encoded in the high nibble of the enum value for standard gates
+        // Arity is encoded in the high part of the enum value for standard gates
         if (v < 0x20) return 1;  // Single-qubit (0x0X, 0x1X)
         if (v < 0x30) return 2;  // Two-qubit   (0x2X)
         if (v < 0x40) return 3;  // Three-qubit  (0x3X)
@@ -503,18 +503,18 @@ namespace qlassical {
         return 0;
     }
 
-    /// Returns true if the gate type requires parameters.
+    // Returns true if the gate type requires parameters.
     [[nodiscard]] constexpr bool gate_is_parametric(GateType type) noexcept {
         const auto v = static_cast<uint8_t>(type);
         return (v >= 0x10 && v < 0x20);   // 1Q parametric
     }
 
-    /// Returns true if the gate references the UnitaryPool.
+    // Returns true if the gate references the UnitaryPool.
     [[nodiscard]] constexpr bool gate_uses_matrix(GateType type) noexcept {
         return type == GateType::UNITARY || type == GateType::FUSED_BLOCK;
     }
 
-    /// Returns true if the gate is a compiler directive (not a physical gate).
+    // Returns true if the gate is a compiler directive (not a physical gate).
     [[nodiscard]] constexpr bool gate_is_directive(GateType type) noexcept {
         const auto v = static_cast<uint8_t>(type);
         return v >= 0xE0;
