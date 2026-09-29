@@ -449,4 +449,44 @@ TEST_CASE("Middleware transpile accepts IRModule and BackendType", "[Middleware]
         REQUIRE_NOTHROW(mw.transpile(mod_mpi, Backend::MPI));
         REQUIRE_NOTHROW(mw.transpile(mod_gpu, Backend::GPU));
     }
+
+    SECTION("Transpile accepts custom TranspilerConfig with cost model parameters") {
+        IRModule mod_custom(4);
+        middleware::TranspilerConfig config;
+        config.numa_penalty = 20;
+        config.swap_penalty = 2;
+        config.cost_model_type = middleware::CostModelType::THRESHOLD;
+        config.k_safe = 2;
+
+        REQUIRE_NOTHROW(mw.transpile(mod_custom, Backend::CPU_OPENMP, config));
+    }
 }
+
+TEST_CASE("CircuitRunner accepts and applies custom TranspilerConfig", "[CircuitRunner][transpile][config]") {
+    auto qc = std::make_shared<QuantumCircuit>(2);
+    qc->h(0).cx(0, 1);
+
+    middleware::TranspilerConfig config;
+    config.enable_gate_fusion = true;
+    config.enable_hw_awareness = true;
+    config.numa_penalty = 15;
+    config.swap_penalty = 2;
+    config.k_safe = 4;
+
+    CircuitRunner runner(qc, Backend::CPU_OPENMP, config);
+
+    REQUIRE(runner.transpiler_config().numa_penalty == 15);
+    REQUIRE(runner.transpiler_config().swap_penalty == 2);
+    REQUIRE(runner.transpiler_config().k_safe.value() == 4);
+
+    REQUIRE_NOTHROW(runner.run());
+
+    auto state = runner.state();
+    REQUIRE(state.size() == 4);
+
+    // Bell state (|00> + |11>) / sqrt(2)
+    double inv_sqrt2 = 1.0 / std::sqrt(2.0);
+    REQUIRE(std::abs(state[0].real() - inv_sqrt2) < 1e-6);
+    REQUIRE(std::abs(state[3].real() - inv_sqrt2) < 1e-6);
+}
+

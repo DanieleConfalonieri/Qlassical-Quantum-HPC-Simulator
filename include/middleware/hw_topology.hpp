@@ -44,10 +44,12 @@ namespace qlassical::middleware {
 
         // Computes the maximum number of qubits that fit entirely within a NUMA domain.
         // Theoretical formula: k_safe = floor(log2(usable_memory / sizeof(complex<double>))).
-        // For benchmarking purposes, k_safe is set to 18 to trigger NUMA-aware SWAP injection
-        // before encountering the host RAM capacity ceiling.
         uint16_t get_safe_qubit_limit() const {
-            return 18;
+            std::size_t memory_bytes = get_numa_memory_size_bytes();
+            if (memory_bytes < 16) return 0;
+            // 15% of the memory is reserved for system overhead, leaving 85% usable for qubit storage
+            double usable_memory = static_cast<double>(memory_bytes) * 0.85;
+            return static_cast<uint16_t>(std::floor(std::log2(usable_memory / 16.0)));
         }
     };
 

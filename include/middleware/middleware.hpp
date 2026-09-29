@@ -71,6 +71,8 @@ public:
       : k_safe(safe_limit), numa_penalty(n_penalty), swap_penalty(s_penalty) {}
 
   uint16_t get_k_safe() const override { return k_safe; }
+  uint32_t get_numa_penalty() const noexcept { return numa_penalty; }
+  uint32_t get_swap_penalty() const noexcept { return swap_penalty; }
 
   std::optional<std::pair<uint16_t, uint16_t>>
   evaluate_swap(std::span<const uint32_t> window_frequencies,
@@ -114,6 +116,19 @@ public:
 
     return std::nullopt;
   }
+};
+
+// -------------------------------------------------------------
+// GreedyCostModel — Aggressive Qubit Windowing Evaluator
+// -------------------------------------------------------------
+//
+// Evicts any active qubit mapped outside the safe NUMA zone into
+// the safe zone by setting swap_penalty = 0.
+
+class GreedyCostModel : public ThresholdCostModel {
+public:
+  explicit GreedyCostModel(uint16_t safe_limit)
+      : ThresholdCostModel(safe_limit, 1, 0) {}
 };
 
 // -------------------------------------------------------------
@@ -331,12 +346,43 @@ fuse_matrices(const GateMatrix &U1, std::span<const uint16_t> q1,
 } // namespace FusionMath
 
 // -------------------------------------------------------------
+// CostModelType — Available Qubit Windowing Cost Model Strategies
+// -------------------------------------------------------------
+
+enum class CostModelType : uint8_t {
+  THRESHOLD = 0,
+  GREEDY    = 1,
+  CUSTOM    = 2
+};
+
+// -------------------------------------------------------------
 // TranspilerConfig — Configuration Options for Transpilation Passes
 // -------------------------------------------------------------
 
 struct TranspilerConfig {
   bool enable_gate_fusion = true;
   bool enable_hw_awareness = true;
+
+  // Cost model strategy selection
+  CostModelType cost_model_type = CostModelType::THRESHOLD;
+
+  // Cost model penalty parameters (used by ThresholdCostModel)
+  uint32_t numa_penalty = 10;
+  uint32_t swap_penalty = 1;
+
+  // Optional manual override for k_safe (safe NUMA qubit limit).
+  // If std::nullopt, the limit is introspected from HardwareTopology.
+  std::optional<uint16_t> k_safe = std::nullopt;
+
+  // Custom user-provided cost model instance (used when cost_model_type is CUSTOM
+  // or whenever custom_cost_model is not null).
+  std::shared_ptr<WindowingCostModel> custom_cost_model = nullptr;
+
+  // Convenience helper to set a custom cost model
+  void set_cost_model(std::shared_ptr<WindowingCostModel> model) noexcept {
+    custom_cost_model = std::move(model);
+    cost_model_type = CostModelType::CUSTOM;
+  }
 };
 
 // -------------------------------------------------------------
@@ -451,9 +497,26 @@ private:
     // 3. Qubit windowing pass (NUMA-aware SWAP scheduling)
     if (config.enable_hw_awareness) {
       CPUHwlocTopology topology;
-      uint16_t k_safe = topology.get_safe_qubit_limit();
-      ThresholdCostModel cost_model(k_safe, 10 /*numa_penalty*/, 1 /*swap_penalty*/); // we force a high numa_penalty and low swap to insert some SWAPs.
-      pass_qubit_windowing(dag, cost_model, module.num_qubits);
+      uint16_t k_safe = config.k_safe.value_or(topology.get_safe_qubit_limit());
+
+      std::unique_ptr<WindowingCostModel> model_storage;
+      const WindowingCostModel *cost_model_ptr = nullptr;
+
+      if (config.custom_cost_model != nullptr) {
+        cost_model_ptr = config.custom_cost_model.get();
+      } else if (config.cost_model_type == CostModelType::THRESHOLD) {
+        model_storage = std::make_unique<ThresholdCostModel>(k_safe, config.numa_penalty, config.swap_penalty);
+        cost_model_ptr = model_storage.get();
+      } else if (config.cost_model_type == CostModelType::GREEDY) {
+        model_storage = std::make_unique<GreedyCostModel>(k_safe);
+        cost_model_ptr = model_storage.get();
+      } else if (config.cost_model_type == CostModelType::CUSTOM) {
+        throw std::invalid_argument("TranspilerConfig: CostModelType::CUSTOM specified but custom_cost_model is null.");
+      }
+
+      if (cost_model_ptr) {
+        pass_qubit_windowing(dag, *cost_model_ptr, module.num_qubits);
+      }
     }
 
     // 4. Release optimized DAG back to module
@@ -804,7 +867,12 @@ public:
 namespace qlassical {
 using middleware::Backend;
 using middleware::BackendType;
+using middleware::CostModelType;
+using middleware::GreedyCostModel;
 using middleware::Middleware;
+using middleware::ThresholdCostModel;
+using middleware::TranspilerConfig;
+using middleware::WindowingCostModel;
 } // namespace qlassical
 
 #endif // QLASSICAL_MIDDLEWARE_HPP

@@ -138,3 +138,186 @@ TEST_CASE("Qubit Windowing: The TLB Miss Hazard",
   REQUIRE((prog[4].qubits[1] == 0 || prog[4].qubits[1] == 1));
   REQUIRE(prog[4].qubits[0] != prog[4].qubits[1]);
 }
+
+TEST_CASE("TranspilerConfig Defaults and Getters", "[middleware][config]") {
+  TranspilerConfig config;
+
+  REQUIRE(config.enable_gate_fusion == true);
+  REQUIRE(config.enable_hw_awareness == true);
+  REQUIRE(config.cost_model_type == CostModelType::THRESHOLD);
+  REQUIRE(config.numa_penalty == 10);
+  REQUIRE(config.swap_penalty == 1);
+  REQUIRE_FALSE(config.k_safe.has_value());
+  REQUIRE(config.custom_cost_model == nullptr);
+
+  ThresholdCostModel model(16, 8, 4);
+  REQUIRE(model.get_k_safe() == 16);
+  REQUIRE(model.get_numa_penalty() == 8);
+  REQUIRE(model.get_swap_penalty() == 4);
+
+  GreedyCostModel greedy(12);
+  REQUIRE(greedy.get_k_safe() == 12);
+  REQUIRE(greedy.get_numa_penalty() == 1);
+  REQUIRE(greedy.get_swap_penalty() == 0);
+}
+
+TEST_CASE("TranspilerConfig Penalty Tuning via transpile()",
+          "[middleware][config][penalties]") {
+  Middleware middleware;
+
+  SECTION("High swap penalty suppresses SWAP injection") {
+    QuantumCircuit qc(10);
+    qc.x(0).x(1).cx(8, 9);
+    IRModule module = qc.release();
+
+    TranspilerConfig config;
+    config.enable_gate_fusion = false;
+    config.enable_hw_awareness = true;
+    config.k_safe = 2;
+    config.numa_penalty = 1;
+    config.swap_penalty = 100; // retention = 1 * 1 < 100 -> No swaps
+
+    middleware.transpile(module, Backend::CPU_OPENMP, config);
+
+    REQUIRE(module.gate_count() == 3);
+    auto prog = module.program();
+    REQUIRE(prog[0].type == GateType::X);
+    REQUIRE(prog[1].type == GateType::X);
+    REQUIRE(prog[2].type == GateType::CX);
+    REQUIRE(prog[2].qubits[0] == 8);
+    REQUIRE(prog[2].qubits[1] == 9);
+  }
+
+  SECTION("Low swap penalty triggers SWAP injection") {
+    QuantumCircuit qc(10);
+    qc.x(0).x(1).cx(8, 9);
+    IRModule module = qc.release();
+
+    TranspilerConfig config;
+    config.enable_gate_fusion = false;
+    config.enable_hw_awareness = true;
+    config.k_safe = 2;
+    config.numa_penalty = 10;
+    config.swap_penalty = 1; // retention = 1 * 10 >= 1 -> Swaps injected
+
+    middleware.transpile(module, Backend::CPU_OPENMP, config);
+
+    REQUIRE(module.gate_count() == 5); // 2 X, 2 GLOBAL_SWAP, 1 CX
+    auto prog = module.program();
+    REQUIRE(prog[2].type == GateType::GLOBAL_SWAP);
+    REQUIRE(prog[3].type == GateType::GLOBAL_SWAP);
+    REQUIRE(prog[4].type == GateType::CX);
+    REQUIRE((prog[4].qubits[0] == 0 || prog[4].qubits[0] == 1));
+    REQUIRE((prog[4].qubits[1] == 0 || prog[4].qubits[1] == 1));
+  }
+}
+
+TEST_CASE("TranspilerConfig Cost Model Selection (Greedy)",
+          "[middleware][config][greedy]") {
+  QuantumCircuit qc(10);
+  qc.x(0).x(1).cx(8, 9);
+  IRModule module = qc.release();
+
+  TranspilerConfig config;
+  config.enable_gate_fusion = false;
+  config.enable_hw_awareness = true;
+  config.cost_model_type = CostModelType::GREEDY;
+  config.k_safe = 2;
+
+  Middleware middleware;
+  middleware.transpile(module, Backend::CPU_OPENMP, config);
+
+  REQUIRE(module.gate_count() == 5);
+  auto prog = module.program();
+  REQUIRE(prog[2].type == GateType::GLOBAL_SWAP);
+  REQUIRE(prog[3].type == GateType::GLOBAL_SWAP);
+  REQUIRE(prog[4].type == GateType::CX);
+}
+
+namespace {
+class CustomSpyCostModel : public WindowingCostModel {
+public:
+  mutable bool evaluated = false;
+  uint16_t safe_limit;
+
+  explicit CustomSpyCostModel(uint16_t limit) : safe_limit(limit) {}
+
+  uint16_t get_k_safe() const override { return safe_limit; }
+
+  std::optional<std::pair<uint16_t, uint16_t>>
+  evaluate_swap([[maybe_unused]] std::span<const uint32_t> window_frequencies,
+                [[maybe_unused]] std::span<const uint16_t> log_to_phys,
+                [[maybe_unused]] std::span<const uint16_t> phys_to_log) const override {
+    evaluated = true;
+    return std::nullopt; // Do not inject any swaps
+  }
+};
+} // namespace
+
+TEST_CASE("TranspilerConfig Custom Cost Model Integration",
+          "[middleware][config][custom]") {
+  Middleware middleware;
+
+  SECTION("Custom cost model is invoked successfully") {
+    QuantumCircuit qc(6);
+    qc.h(0).cx(4, 5);
+    IRModule module = qc.release();
+
+    auto spy = std::make_shared<CustomSpyCostModel>(3);
+
+    TranspilerConfig config;
+    config.enable_gate_fusion = false;
+    config.enable_hw_awareness = true;
+    config.set_cost_model(spy);
+
+    REQUIRE(config.cost_model_type == CostModelType::CUSTOM);
+    REQUIRE(config.custom_cost_model == spy);
+
+    middleware.transpile(module, Backend::CPU_OPENMP, config);
+
+    REQUIRE(spy->evaluated == true);
+    REQUIRE(module.gate_count() == 2);
+  }
+
+  SECTION("Custom cost model type without instance throws exception") {
+    QuantumCircuit qc(4);
+    qc.h(0);
+    IRModule module = qc.release();
+
+    TranspilerConfig config;
+    config.cost_model_type = CostModelType::CUSTOM;
+    config.custom_cost_model = nullptr;
+
+    REQUIRE_THROWS_AS(middleware.transpile(module, Backend::CPU_OPENMP, config),
+                      std::invalid_argument);
+  }
+}
+
+TEST_CASE("TranspilerConfig k_safe Manual Override",
+          "[middleware][config][k_safe]") {
+  Middleware middleware;
+
+  QuantumCircuit qc(10);
+  qc.x(0).x(1).cx(8, 9);
+  IRModule module = qc.release();
+
+  SECTION("k_safe covering all qubits avoids SWAP injection") {
+    TranspilerConfig config;
+    config.enable_gate_fusion = false;
+    config.enable_hw_awareness = true;
+    config.k_safe = 16; // All 10 qubits fit in safe zone
+
+    middleware.transpile(module, Backend::CPU_OPENMP, config);
+    REQUIRE(module.gate_count() == 3);
+  }
+
+  SECTION("k_safe restricting qubits triggers SWAP injection") {
+    TranspilerConfig config;
+    config.enable_gate_fusion = false;
+    config.enable_hw_awareness = true;
+    config.k_safe = 2; // Qubits 8 and 9 outside safe zone
+
+    middleware.transpile(module, Backend::CPU_OPENMP, config);
+    REQUIRE(module.gate_count() == 5);
+  }
+}

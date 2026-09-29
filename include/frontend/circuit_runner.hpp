@@ -228,6 +228,15 @@ namespace qlassical {
             return middleware_;
         }
 
+        // Access the configured TranspilerConfig options.
+        [[nodiscard]] const middleware::TranspilerConfig& transpiler_config() const noexcept {
+            return transpiler_config_;
+        }
+
+        [[nodiscard]] middleware::TranspilerConfig& transpiler_config() noexcept {
+            return transpiler_config_;
+        }
+
         // Selected backend architecture.
         [[nodiscard]] Backend backend() const noexcept {
             return backend_type_;

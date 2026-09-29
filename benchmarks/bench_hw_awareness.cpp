@@ -80,6 +80,7 @@ static void BM_Thesis_Matrix(benchmark::State& state) {
     TranspilerConfig config;
     config.enable_hw_awareness = (strategy == OptStrategy::SWAP_ONLY || strategy == OptStrategy::SWAP_AND_FUSION);
     config.enable_gate_fusion = (strategy == OptStrategy::FUSION_ONLY || strategy == OptStrategy::SWAP_AND_FUSION);
+    config.k_safe = 18;
     
     Middleware middleware;
     middleware.transpile(module, Backend::CPU_OPENMP, config);

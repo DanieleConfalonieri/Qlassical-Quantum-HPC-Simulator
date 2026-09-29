@@ -67,6 +67,7 @@ static void BM_Strong_Scaling(benchmark::State& state) {
     TranspilerConfig config;
     config.enable_gate_fusion = true;
     config.enable_hw_awareness = true; // Use optimal transpilation configuration
+    config.k_safe = 18;
     
     Middleware middleware;
     middleware.transpile(module, Backend::CPU_OPENMP, config);
@@ -115,6 +116,7 @@ static void BM_Weak_Scaling(benchmark::State& state) {
     TranspilerConfig config;
     config.enable_gate_fusion = true;
     config.enable_hw_awareness = true;
+    config.k_safe = 18;
     
     Middleware middleware;
     middleware.transpile(module, Backend::CPU_OPENMP, config);
