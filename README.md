@@ -269,13 +269,15 @@ Qlassical eliminates conditional branching by using an **algorithm-driven bitwis
 
 For each thread iteration $k$, the physical state vector indices $(i_0, i_1)$ are constructed by inserting a zero bit ("hole") at position $t$:
 
-$$\text{low} = k \ \& \ \left((1 \ll t) - 1\right)$$
+```math
+\begin{aligned}
+\text{low} &= k \ \& \ \left((1 \ll t) - 1\right) \\
+\text{high} &= \left(k \ \& \ \sim\!\left((1 \ll t) - 1\right)\right) \ll 1 \\
+i_0 &= \text{low} \mid \text{high} \\
+i_1 &= i_0 \mid (1 \ll t)
+\end{aligned}
+```
 
-$$\text{high} = \left(k \ \& \ \sim\!\left((1 \ll t) - 1\right)\right) \ll 1$$
-
-$$i_0 = \text{low} \mid \text{high}$$
-
-$$i_1 = i_0 \mid (1 \ll t)$$
 
 ```
       Bitstring Construction for Target Qubit t:
@@ -288,15 +290,15 @@ $$i_1 = i_0 \mid (1 \ll t)$$
 
 For a 2-qubit controlled gate (e.g., CNOT with control $c$ and target $t$, assuming $q_0 = \min(c,t)$ and $q_1 = \max(c,t)$), two holes are injected simultaneously. The OpenMP kernel iterates exactly $2^{N-2}$ times:
 
-$$\text{low} = k \ \& \ \left((1 \ll q_0) - 1\right)$$
-
-$$\text{mid} = \left(k \ \& \ \left(\left((1 \ll (q_1 - 1)) - 1\right) \ \& \ \sim\!\left((1 \ll q_0) - 1\right)\right)\right) \ll 1$$
-
-$$\text{high} = \left(k \ \& \ \sim\!\left((1 \ll (q_1 - 1)) - 1\right)\right) \ll 2$$
-
-$$i_{\text{base}} = \text{low} \mid \text{mid} \mid \text{high}$$
-
-$$i_{11} = i_{\text{base}} \mid (1 \ll c) \mid (1 \ll t)$$
+```math 
+\begin{aligned}
+\text{low} &= k \ \& \ \left((1 \ll q_0) - 1\right) \\
+\text{mid} &= \left(k \ \& \ \left(\left((1 \ll (q_1 - 1)) - 1\right) \ \& \ \sim\!\left((1 \ll q_0) - 1\right)\right)\right) \ll 1 \\
+\text{high} &= \left(k \ \& \ \sim\!\left((1 \ll (q_1 - 1)) - 1\right)\right) \ll 2 \\
+i_{\text{base}} &= \text{low} \mid \text{mid} \mid \text{high} \\
+i_{11} &= i_{\text{base}} \mid (1 \ll c) \mid (1 \ll t)
+\end{aligned}
+```
 
 A similar algorithm is implemented for native 3-qubits gates as well.
 
