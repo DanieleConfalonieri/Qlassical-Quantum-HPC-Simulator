@@ -1,6 +1,14 @@
 #ifndef QLASSICAL_FRONTEND_HPP
 #define QLASSICAL_FRONTEND_HPP
 
+// -------------------------------------------------------------
+// Frontend — Quantum Circuit Intermediate Representation & API
+// -------------------------------------------------------------
+//
+// Defines the core data structures and builder interfaces for Qlassical:
+// GateType, GateInstr (compact 16-byte IR), UnitaryPool, IRModule, and
+// QuantumCircuit builder.
+
 #include <complex>
 #include <vector>
 #include <span>
@@ -48,45 +56,52 @@ namespace qlassical {
 
     namespace gate_flags {
         inline constexpr uint8_t NONE         = 0x00;
-        inline constexpr uint8_t ADJOINT      = 0x01;  // Apply gate† (conjugate transpose)
+        inline constexpr uint8_t ADJOINT      = 0x01;  // Apply conjugate transpose
         inline constexpr uint8_t FUSED_HEAD   = 0x02;  // First gate of a fused block
         inline constexpr uint8_t FUSED_TAIL   = 0x03;  // Last gate of a fused block
         inline constexpr uint8_t COMPILER_GEN = 0x04;  // Injected by Middle-End, mainly for debugging
     }
 
     // --------------------------------------------------------
-    // GateInstr - The central IR instruction (32-byte aligned)
+    // GateInstr - The central IR instruction (16-byte aligned)
     // --------------------------------------------------------
     //
     // Memory layout (offsets verified by static_assert):
     //
     //   Byte  0     : GateType      type        (1B)
-    //   Byte  1     : uint8_t       arity       (1B)
-    //   Byte  2     : uint8_t       flags       (1B)
-    //   Byte  3     : uint8_t       _pad0       (1B)
-    //   Byte  4–11  : int16_t[4]    qubits      (8B)
-    //   Byte 12–23  : float[3]      params      (12B)
-    //   Byte 24–27  : uint32_t      matrix_idx  (4B)
-    //   Byte 28–31  : uint32_t      uid         (4B)
+    //   Byte  1     : uint8_t       flags_arity (1B)
+    //   Byte  2-5   : uint8_t[4]    qubits      (4B)
+    //   Byte  6-7   : uint16_t      _pad        (2B)
+    //   Byte  8-11  : union payload             (4B)
+    //   Byte 12-15  : uint32_t      uid         (4B)
     //
-    // Total: 32 bytes. Two fit in a cache line.
+    // Total: 16 bytes. Four fit in a cache line.
     // The Middle-End iterates this linearly -> prefetching.
 
     // Special value for "no matrix" 
     inline constexpr uint32_t NO_MATRIX = UINT32_MAX;
 
-    struct alignas(32) GateInstr {
-        GateType  type       = GateType::H;
-        uint8_t   arity      = 0;
-        uint8_t   flags      = gate_flags::NONE;
-        uint8_t   _pad0      = 0;
+    struct alignas(16) GateInstr {
+        GateType type = GateType::H;
+        uint8_t  flags_arity = 0;
+        uint8_t  qubits[4] = {255, 255, 255, 255};
+        
+        uint16_t _pad = 0;
 
-        int16_t   qubits[4]  = {-1, -1, -1, -1};
+        // Shared space: 4 bytes
+        union Payload {
+            float    param;      // Used when GateType is RX, RY, RZ
+            uint32_t matrix_idx; // Used when GateType is UNITARY or FUSED_BLOCK
+        } payload = {0.0f};
 
-        float     params[3]  = {0.0f, 0.0f, 0.0f};
+        uint32_t uid = 0;
 
-        uint32_t  matrix_idx = NO_MATRIX;   // NO_MATRIX ≡ "no matrix"
-        uint32_t  uid        = 0;
+        // Helpers
+        [[nodiscard]] uint8_t arity() const noexcept { return flags_arity & 0x0F; }
+        void set_arity(uint8_t a) noexcept { flags_arity = (flags_arity & 0xF0) | (a & 0x0F); }
+
+        [[nodiscard]] uint8_t flags() const noexcept { return (flags_arity >> 4) & 0x0F; }
+        void set_flags(uint8_t f) noexcept { flags_arity = (flags_arity & 0x0F) | ((f & 0x0F) << 4); }
     };
 
     // -----------------------------------------------------------------
@@ -156,7 +171,7 @@ namespace qlassical {
 
     struct IRModule {
         uint32_t                num_qubits = 0;
-        std::vector<GateInstr>  gate_stream;           // hot: linear instruction stream
+        std::vector<GateInstr>  gate_stream;    // hot: linear instruction stream
         UnitaryPool             unitary_pool;   // cold: custom matrices
 
         IRModule() = default;
@@ -214,9 +229,9 @@ namespace qlassical {
         QuantumCircuit(const QuantumCircuit&) = delete;
         QuantumCircuit& operator=(const QuantumCircuit&) = delete;
 
-        // Transfer ownership to the compiler 
+        // Transfer ownership to the transpiler 
         // Must be called on an rvalue: std::move(qc).release()
-        [[nodiscard]] IRModule release() && noexcept {
+        [[nodiscard]] IRModule release() noexcept {
             return std::move(module_);
         }
 
@@ -334,13 +349,13 @@ namespace qlassical {
 
             GateInstr instr = {};
             instr.type       = GateType::UNITARY;
-            instr.arity      = k;
-            instr.matrix_idx = midx;
+            instr.set_arity(k);
+            instr.payload.matrix_idx = midx;
             instr.uid        = uid_counter_++;
 
             for (uint8_t i = 0; i < k; ++i) {
                 validate_qubit(target_qubits[i]);
-                instr.qubits[i] = target_qubits[i];
+                instr.qubits[i] = static_cast<uint8_t>(target_qubits[i]);
             }
 
             module_.gate_stream.push_back(instr);
@@ -356,15 +371,15 @@ namespace qlassical {
         QuantumCircuit& barrier(std::initializer_list<int16_t> qubits = {}) {
             GateInstr instr = {};
             instr.type  = GateType::BARRIER;
-            instr.arity = static_cast<uint8_t>(
-                std::min<std::size_t>(qubits.size(), 4));
+            instr.set_arity(static_cast<uint8_t>(
+                std::min<std::size_t>(qubits.size(), 4)));
             instr.uid   = uid_counter_++;
 
             uint8_t i = 0;
             for (int16_t q : qubits) {
                 if (i >= 4) break;
                 validate_qubit(q);
-                instr.qubits[i++] = q;
+                instr.qubits[i++] = static_cast<uint8_t>(q);
             }
 
             module_.gate_stream.push_back(instr);
@@ -393,10 +408,10 @@ namespace qlassical {
 
         // Qubit bounds checking 
         void validate_qubit(int16_t q) const {
-            if (q < 0 || static_cast<uint32_t>(q) >= module_.num_qubits) {
+            if (q < 0 || q >= 256 || static_cast<uint32_t>(q) >= module_.num_qubits) {
                 throw std::out_of_range(
                     "Qubit index " + std::to_string(q) +
-                    " out of range [0, " + std::to_string(module_.num_qubits) + ")");
+                    " out of range [0, min(256, " + std::to_string(module_.num_qubits) + "))");
             }
         }
 
@@ -413,8 +428,8 @@ namespace qlassical {
             validate_qubit(q);
             GateInstr instr;      
             instr.type = type;
-            instr.arity = 1;
-            instr.qubits[0] = q;
+            instr.set_arity(1);
+            instr.qubits[0] = static_cast<uint8_t>(q);
             push(instr);
         }
 
@@ -422,9 +437,9 @@ namespace qlassical {
             validate_qubit(q);
             GateInstr instr;
             instr.type = type;
-            instr.arity = 1;
-            instr.qubits[0] = q;
-            instr.params[0] = theta;
+            instr.set_arity(1);
+            instr.qubits[0] = static_cast<uint8_t>(q);
+            instr.payload.param = theta;
             push(instr);
         }
 
@@ -438,9 +453,9 @@ namespace qlassical {
             }
             GateInstr instr;
             instr.type = type;
-            instr.arity = 2;
-            instr.qubits[0] = q0;
-            instr.qubits[1] = q1;
+            instr.set_arity(2);
+            instr.qubits[0] = static_cast<uint8_t>(q0);
+            instr.qubits[1] = static_cast<uint8_t>(q1);
             push(instr);
         }
 
@@ -454,10 +469,10 @@ namespace qlassical {
             }
             GateInstr instr;
             instr.type = type;
-            instr.arity = 3;
-            instr.qubits[0] = q0;
-            instr.qubits[1] = q1;
-            instr.qubits[2] = q2;
+            instr.set_arity(3);
+            instr.qubits[0] = static_cast<uint8_t>(q0);
+            instr.qubits[1] = static_cast<uint8_t>(q1);
+            instr.qubits[2] = static_cast<uint8_t>(q2);
             push(instr);
         }
 
@@ -472,11 +487,11 @@ namespace qlassical {
             }
             GateInstr instr;
             instr.type = type;
-            instr.arity = 4;
-            instr.qubits[0] = q0;
-            instr.qubits[1] = q1;
-            instr.qubits[2] = q2;
-            instr.qubits[3] = q3;
+            instr.set_arity(4);
+            instr.qubits[0] = static_cast<uint8_t>(q0);
+            instr.qubits[1] = static_cast<uint8_t>(q1);
+            instr.qubits[2] = static_cast<uint8_t>(q2);
+            instr.qubits[3] = static_cast<uint8_t>(q3);
             push(instr);
         }
     };
@@ -488,7 +503,7 @@ namespace qlassical {
     // gate arity from GateType for standard gates
     [[nodiscard]] constexpr uint8_t gate_arity(GateType type) noexcept {
         const auto v = static_cast<uint8_t>(type);
-        // Arity is encoded in the high nibble of the enum value for standard gates
+        // Arity is encoded in the high part of the enum value for standard gates
         if (v < 0x20) return 1;  // Single-qubit (0x0X, 0x1X)
         if (v < 0x30) return 2;  // Two-qubit   (0x2X)
         if (v < 0x40) return 3;  // Three-qubit  (0x3X)
@@ -496,24 +511,24 @@ namespace qlassical {
         return 0;
     }
 
-    /// Returns true if the gate type requires parameters.
+    // Returns true if the gate type requires parameters.
     [[nodiscard]] constexpr bool gate_is_parametric(GateType type) noexcept {
         const auto v = static_cast<uint8_t>(type);
         return (v >= 0x10 && v < 0x20);   // 1Q parametric
     }
 
-    /// Returns true if the gate references the UnitaryPool.
+    // Returns true if the gate references the UnitaryPool.
     [[nodiscard]] constexpr bool gate_uses_matrix(GateType type) noexcept {
         return type == GateType::UNITARY || type == GateType::FUSED_BLOCK;
     }
 
-    /// Returns true if the gate is a compiler directive (not a physical gate).
+    // Returns true if the gate is a compiler directive (not a physical gate).
     [[nodiscard]] constexpr bool gate_is_directive(GateType type) noexcept {
         const auto v = static_cast<uint8_t>(type);
         return v >= 0xE0;
     }
 
 
-}
+} // namespace qlassical
 
 #endif // QLASSICAL_FRONTEND_HPP

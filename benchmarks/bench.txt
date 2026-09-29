@@ -1,0 +1,30 @@
+Starting Benchmark Qlassical on Karolina - Node: cn719
+--------------------------------------------------------------------------
+Benchmark                                Time             CPU   Iterations
+--------------------------------------------------------------------------
+BM_Thesis_Matrix/24/0/real_time       1497 ms         1413 ms            1
+BM_Thesis_Matrix/25/0/real_time       2435 ms         2089 ms            1
+BM_Thesis_Matrix/26/0/real_time      37282 ms        17019 ms            1
+BM_Thesis_Matrix/27/0/real_time      81743 ms        30321 ms            1
+[TELEMETRY - BASELINE] Gates: 765 -> 765
+BM_Thesis_Matrix/28/0/real_time     169314 ms        57499 ms            1
+BM_Thesis_Matrix/24/1/real_time        210 ms          209 ms            3
+BM_Thesis_Matrix/25/1/real_time        280 ms          277 ms            2
+BM_Thesis_Matrix/26/1/real_time      39211 ms        16951 ms            1
+BM_Thesis_Matrix/27/1/real_time      86427 ms        32011 ms            1
+[TELEMETRY - SWAP_ONLY] Gates: 765 -> 774
+BM_Thesis_Matrix/28/1/real_time     176816 ms        59220 ms            1
+BM_Thesis_Matrix/24/2/real_time        454 ms          450 ms            2
+BM_Thesis_Matrix/25/2/real_time        878 ms          792 ms            1
+BM_Thesis_Matrix/26/2/real_time       5019 ms         2316 ms            1
+BM_Thesis_Matrix/27/2/real_time      10713 ms         4164 ms            1
+[TELEMETRY - FUSION_ONLY] Gates: 765 -> 76
+BM_Thesis_Matrix/28/2/real_time      22069 ms         7875 ms            1
+BM_Thesis_Matrix/24/3/real_time        239 ms          238 ms            3
+BM_Thesis_Matrix/25/3/real_time        493 ms          490 ms            2
+BM_Thesis_Matrix/26/3/real_time       4853 ms         2089 ms            1
+BM_Thesis_Matrix/27/3/real_time      10349 ms         3800 ms            1
+[TELEMETRY - SWAP+FUSION] Gates: 765 -> 85
+BM_Thesis_Matrix/28/3/real_time      21018 ms         7163 ms            1
+Benchmark completed.
+

@@ -1,0 +1,34 @@
+Bootstrap: docker
+From: ubuntu:24.04
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        git \
+        pkg-config \
+        libhwloc-dev \
+        hwloc-nox \
+        libomp-dev \
+        libeigen3-dev \
+        catch2 \
+        libbenchmark-dev
+    
+    # Cache clean
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+
+%environment
+    export OMP_PROC_BIND=true
+    export OMP_PLACES=cores
+
+%help
+    This container provides the HPC build environment for Qlassical.
+    It includes GCC 13, CMake 3.28, Git, HWLoc (with dev headers),
+    OpenMP, Eigen3, Catch2, and Google Benchmark.
+    
+    Usage:
+    apptainer shell qlassical_env.sif
+    apptainer exec qlassical_env.sif bash -c "mkdir -p build && cd build && cmake .. && make -j$(nproc)"
