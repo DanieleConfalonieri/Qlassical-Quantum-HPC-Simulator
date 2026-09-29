@@ -1,3 +1,10 @@
+// -------------------------------------------------------------
+// Qlassical — Gate Fusion Math Unit Tests (Catch2)
+// -------------------------------------------------------------
+//
+// Tests for isolated gate fusion mathematics using Eigen Kronecker products
+// and arbitrary qubit-index scatter expansions.
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 #include <middleware/middleware.hpp>

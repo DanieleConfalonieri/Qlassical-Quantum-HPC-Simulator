@@ -1,3 +1,9 @@
+// -------------------------------------------------------------
+// Qlassical — Hardware Topology Unit Tests (Catch2)
+// -------------------------------------------------------------
+//
+// Unit tests verifying hwloc topology introspection and NUMA limit calculations.
+
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <middleware/hw_topology.hpp>
@@ -15,7 +21,7 @@ TEST_CASE("Hardware Topology Detection", "[middleware][hw_topology]") {
     REQUIRE(numa_memory > 0);
     REQUIRE(numa_nodes >= 1);
 
-    // Verifica la coerenza con il fattore di carico dell'85%
+    // Verify consistency with the 85% usable memory load factor
     double usable_memory = static_cast<double>(numa_memory) * 0.85;
     uint16_t expected_k_safe =
         static_cast<uint16_t>(std::floor(std::log2(usable_memory / 16.0)));

@@ -1,6 +1,14 @@
 #ifndef QLASSICAL_FRONTEND_HPP
 #define QLASSICAL_FRONTEND_HPP
 
+// -------------------------------------------------------------
+// Frontend — Quantum Circuit Intermediate Representation & API
+// -------------------------------------------------------------
+//
+// Defines the core data structures and builder interfaces for Qlassical:
+// GateType, GateInstr (compact 16-byte IR), UnitaryPool, IRModule, and
+// QuantumCircuit builder.
+
 #include <complex>
 #include <vector>
 #include <span>
@@ -521,6 +529,6 @@ namespace qlassical {
     }
 
 
-}
+} // namespace qlassical
 
 #endif // QLASSICAL_FRONTEND_HPP

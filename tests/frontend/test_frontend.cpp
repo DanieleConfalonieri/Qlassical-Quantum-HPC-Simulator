@@ -1,6 +1,10 @@
-// -----------------------------
-// Qlassical - Frontend.hpp Test
-// -----------------------------
+// -------------------------------------------------------------
+// Qlassical — Frontend Unit Tests (Catch2)
+// -------------------------------------------------------------
+//
+// Comprehensive unit tests covering GateInstr memory alignment,
+// UnitaryPool matrix storage, IRModule representations, and the
+// QuantumCircuit instruction builder API.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -15,9 +19,9 @@
 
 using namespace qlassical;
 
-// -------------------------
-// GateInstr - Memory layout
-// -------------------------
+// -------------------------------------------------------------
+// SECTION 1: GateInstr Memory Layout & Alignment
+// -------------------------------------------------------------
 
 TEST_CASE("GateInstr is exactly 16 bytes and 16-byte aligned", "[GateInstr]") {
     STATIC_REQUIRE(sizeof(GateInstr) == 16);
@@ -50,9 +54,9 @@ TEST_CASE("GateInstr default-initializes to sane values", "[GateInstr]") {
     CHECK(instr.uid == 0);
 }
 
-// ----------------------
-// SECTION 2: UnitaryPool
-// ----------------------
+// -------------------------------------------------------------
+// SECTION 2: UnitaryPool Storage & Retrieval
+// -------------------------------------------------------------
 
 TEST_CASE("UnitaryPool stores and retrieves a 1-qubit matrix", "[pool]") {
     UnitaryPool pool;
@@ -124,9 +128,9 @@ TEST_CASE("UnitaryPool starts empty", "[pool]") {
     CHECK(pool.total_elements() == 0);
 }
 
-// -------------------
-// SECTION 3: IRModule
-// --------------------
+// -------------------------------------------------------------
+// SECTION 3: IRModule Program Representation
+// -------------------------------------------------------------
 
 TEST_CASE("IRModule default construction", "[IRModule]") {
     IRModule mod;
@@ -180,9 +184,9 @@ TEST_CASE("IRModule span accessors return correct views", "[IRModule]") {
     CHECK(mod.gate_stream[0].flags() == gate_flags::ADJOINT);
 }
 
-// ----------------------------------------------
-// SECTION 4: QuantumCircuit - Single-qubit gates
-// ----------------------------------------------
+// -------------------------------------------------------------
+// SECTION 4: QuantumCircuit — Single-Qubit Gates
+// -------------------------------------------------------------
 
 TEST_CASE("QuantumCircuit builds a single H gate", "[builder][1q]") {
     QuantumCircuit qc(1);
@@ -219,9 +223,9 @@ TEST_CASE("QuantumCircuit builds all single-qubit non-parametric gates", "[build
     }
 }
 
-// ---------------------------------------------------------
-// SECTION 5: QuantumCircuit - Single-qubit parametric gates
-// ---------------------------------------------------------
+// -------------------------------------------------------------
+// SECTION 5: QuantumCircuit — Single-Qubit Parametric Gates
+// -------------------------------------------------------------
 
 TEST_CASE("QuantumCircuit RX stores angle correctly", "[builder][1q][param]") {
     const double theta = M_PI / 4.0;
@@ -257,9 +261,9 @@ TEST_CASE("QuantumCircuit RY and RZ parametric gates", "[builder][1q][param]") {
                Catch::Matchers::WithinAbs(-0.567, 1e-6));
 }
 
-// -------------------------------------------
-// SECTION 6: QuantumCircuit - Two-qubit gates
-// --------------------------------------------
+// -------------------------------------------------------------
+// SECTION 6: QuantumCircuit — Two-Qubit Gates
+// -------------------------------------------------------------
 
 TEST_CASE("QuantumCircuit CX (CNOT) gate", "[builder][2q]") {
     QuantumCircuit qc(3);
@@ -305,9 +309,9 @@ TEST_CASE("QuantumCircuit SWAP gate", "[builder][2q]") {
     CHECK(prog[0].qubits[1] == 3);
 }
 
-// ---------------------------------------------
-// SECTION 7: QuantumCircuit - Three-qubit gates
-// ---------------------------------------------
+// -------------------------------------------------------------
+// SECTION 7: QuantumCircuit — Three-Qubit Gates
+// -------------------------------------------------------------
 
 TEST_CASE("QuantumCircuit CCX (Toffoli) gate", "[builder][3q]") {
     QuantumCircuit qc(4);
@@ -356,9 +360,9 @@ TEST_CASE("QuantumCircuit Fredkin alias delegates to CSWAP", "[builder][3q]") {
     CHECK(mod.program()[0].type == GateType::CSWAP);
 }
 
-// ------------------------------------------
-// SECTION 8: QuantumCircuit - Custom unitary
-// -------------------------------------------
+// -------------------------------------------------------------
+// SECTION 8: QuantumCircuit — Custom Unitary
+// -------------------------------------------------------------
 
 TEST_CASE("QuantumCircuit applies a custom 1-qubit unitary", "[builder][unitary]") {
     const double s = 1.0 / std::sqrt(2.0);
@@ -414,9 +418,9 @@ TEST_CASE("Custom unitary rejects zero arity", "[builder][unitary][error]") {
     );
 }
 
-// --------------------------------------------------------
-// SECTION 9: QuantumCircuit - Circuit structure directives
-// --------------------------------------------------------
+// -------------------------------------------------------------
+// SECTION 9: QuantumCircuit — Circuit Structure Directives
+// -------------------------------------------------------------
 
 TEST_CASE("QuantumCircuit barrier with specific qubits", "[builder][directive]") {
     QuantumCircuit qc(4);
@@ -479,9 +483,9 @@ TEST_CASE("QuantumCircuit measure multiple qubits", "[builder][directive]") {
     }
 }
 
-// -----------------------------------------------
-// SECTION 10: QuantumCircuit - composite circuits
-// -----------------------------------------------
+// -------------------------------------------------------------
+// SECTION 10: QuantumCircuit — Composite Circuits
+// -------------------------------------------------------------
 
 TEST_CASE("QuantumCircuit builds Bell state circuit", "[builder]") {
     QuantumCircuit qc(2);
@@ -506,9 +510,9 @@ TEST_CASE("QuantumCircuit builds a complex mixed circuit", "[builder]") {
     REQUIRE(mod.gate_count() == 11);
 }
 
-// ----------------------------
-// SECTION 11: UID monotonicity
-// ----------------------------
+// -------------------------------------------------------------
+// SECTION 11: GateInstr UID Monotonicity
+// -------------------------------------------------------------
 
 TEST_CASE("UIDs are strictly monotonically increasing", "[builder][uid]") {
     QuantumCircuit qc(3);
@@ -524,9 +528,9 @@ TEST_CASE("UIDs are strictly monotonically increasing", "[builder][uid]") {
     }
 }
 
-// -------------------------------------------------------
-// SECTION 12: QuantumCircuit - Move semantics & release()
-// -------------------------------------------------------
+// -------------------------------------------------------------
+// SECTION 12: QuantumCircuit — Move Semantics & release()
+// -------------------------------------------------------------
 
 TEST_CASE("QuantumCircuit is move-only", "[builder][move]") {
     STATIC_REQUIRE(std::is_move_constructible_v<QuantumCircuit>);
@@ -570,9 +574,9 @@ TEST_CASE("QuantumCircuit query methods", "[builder]") {
     CHECK(prog[0].type == GateType::H);
 }
 
-// --------------------------------------------------
-// SECTION 13: Qubit validation - boundary conditions
-// --------------------------------------------------
+// -------------------------------------------------------------
+// SECTION 13: Qubit Validation & Boundary Conditions
+// -------------------------------------------------------------
 
 TEST_CASE("Out-of-range qubit throws std::out_of_range", "[builder][error]") {
     SECTION("Qubit index too high") {
@@ -628,9 +632,9 @@ TEST_CASE("Measure validates qubit index", "[builder][error]") {
     REQUIRE_THROWS_AS(QuantumCircuit(2).measure(3), std::out_of_range);
 }
 
-// ----------------------------
-// SECTION 14: Helper functions
-// ----------------------------
+// -------------------------------------------------------------
+// SECTION 14: Gate Helper Functions
+// -------------------------------------------------------------
 
 TEST_CASE("gate_arity returns correct arity for standard gates", "[helpers]") {
     CHECK(gate_arity(GateType::H)  == 1);
@@ -685,9 +689,9 @@ TEST_CASE("gate_is_directive identifies compiler directives", "[helpers]") {
     CHECK_FALSE(gate_is_directive(GateType::UNITARY));
 }
 
-// ------------------------------------
-// SECTION 15: NO_MATRIX sentinel value
-// ------------------------------------
+// -------------------------------------------------------------
+// SECTION 15: NO_MATRIX Sentinel Value
+// -------------------------------------------------------------
 
 TEST_CASE("NO_MATRIX sentinel is UINT32_MAX", "[ir]") {
     STATIC_REQUIRE(NO_MATRIX == UINT32_MAX);
@@ -695,9 +699,9 @@ TEST_CASE("NO_MATRIX sentinel is UINT32_MAX", "[ir]") {
 
 
 
-// ---------------------
-// SECTION 16: GateFlags
-// ---------------------
+// -------------------------------------------------------------
+// SECTION 16: GateFlags Bitmask Modifiers
+// -------------------------------------------------------------
 
 TEST_CASE("Gate flags are distinct bit values", "[ir][flags]") {
     CHECK(gate_flags::NONE         == 0x00);
@@ -717,9 +721,9 @@ TEST_CASE("Flags default to NONE in builder-produced instructions", "[ir][flags]
     }
 }
 
-// ----------------------
-// SECTION 17: Edge cases
-// ----------------------
+// -------------------------------------------------------------
+// SECTION 17: Edge Cases & Numerical Robustness
+// -------------------------------------------------------------
 
 TEST_CASE("Empty circuit produces empty module", "[builder][edge]") {
     QuantumCircuit qc(5);

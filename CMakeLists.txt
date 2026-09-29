@@ -30,9 +30,9 @@ find_package(Catch2 3 REQUIRED)
 find_package(Eigen3 3.4 REQUIRED)
 find_package(benchmark REQUIRED)
 
-# ------------------------
-# Qlassical - Core Library
-# ------------------------
+# -------------------------------------------------------------
+# Qlassical — Core Interface Library Target
+# -------------------------------------------------------------
 add_library(qlassical INTERFACE)
 
 target_include_directories(qlassical INTERFACE 
@@ -52,9 +52,9 @@ if (HWLOC_FOUND)
     target_link_libraries(qlassical INTERFACE ${HWLOC_LIBRARIES})
 endif()
 
-# ------------
-# Testing
-# ------------
+# -------------------------------------------------------------
+# Testing Infrastructure (Catch2)
+# -------------------------------------------------------------
 enable_testing()
 
 add_executable(test_frontend tests/frontend/test_frontend.cpp)
@@ -97,9 +97,9 @@ catch_discover_tests(test_circuit_runner)
 catch_discover_tests(test_middleware)
 catch_discover_tests(test_hw_topology)
 
-# ------------
-# Benchmarks
-# ------------
+# -------------------------------------------------------------
+# Benchmarks (Google Benchmark)
+# -------------------------------------------------------------
 add_executable(bench_hw_awareness benchmarks/bench_hw_awareness.cpp)
 target_link_libraries(bench_hw_awareness PRIVATE benchmark::benchmark qlassical)
 add_executable(bench_scaling benchmarks/bench_scaling.cpp)

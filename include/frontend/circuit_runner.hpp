@@ -1,10 +1,10 @@
 #ifndef QLASSICAL_FRONTEND_CIRCUIT_RUNNER_HPP
 #define QLASSICAL_FRONTEND_CIRCUIT_RUNNER_HPP
 
-// -------------
-// CircuitRunner
-// -------------
-
+// -----------------------------------------------------------------
+// CircuitRunner — High-Level Quantum Circuit Execution Orchestrator
+// -----------------------------------------------------------------
+//
 // High-level execution orchestrator for quantum circuits.
 // Encapsulates the complete execution pipeline across the three architectural layers:
 //   1. FrontEnd: Circuit specification & block partitioning (QuantumCircuit / IRModule)

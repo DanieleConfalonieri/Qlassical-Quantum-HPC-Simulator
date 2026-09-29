@@ -1,8 +1,18 @@
-import pandas as pd
-import matplotlib.pyplot as plt
-import io
+# -------------------------------------------------------------
+# Qlassical — HPC Scaling Plot Generator (Karolina Cluster)
+# -------------------------------------------------------------
+#
+# Generates publication-quality strong and weak scaling performance
+# plots using benchmark telemetry collected on the Karolina HPC cluster.
 
-# Data from Karolina HPC Cluster
+import io
+import matplotlib.pyplot as plt
+import pandas as pd
+
+# -------------------------------------------------------------
+# Benchmark Telemetry Data (Karolina HPC Cluster)
+# -------------------------------------------------------------
+
 strong_csv = """Threads,RealTime_ms
 1,112635
 2,57582
@@ -25,20 +35,23 @@ weak_csv = """Shift,Threads,Qubits,RealTime_ms
 df_strong = pd.read_csv(io.StringIO(strong_csv))
 df_weak = pd.read_csv(io.StringIO(weak_csv))
 
-# Compute Speedup (Strong Scaling)
-# Speedup = T(1) / T(N)
+# -------------------------------------------------------------
+# Speedup Calculation (Strong Scaling: Speedup = T(1) / T(N))
+# -------------------------------------------------------------
 t1_strong = df_strong['RealTime_ms'].iloc[0]
 df_strong['Speedup'] = t1_strong / df_strong['RealTime_ms']
 df_strong['Ideal_Speedup'] = df_strong['Threads']
 
-# Plotting Setup
+# -------------------------------------------------------------
+# Plotting Configuration
+# -------------------------------------------------------------
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 
 # Plot A: Strong Scaling (Speedup curve)
 ax1.plot(df_strong['Threads'], df_strong['Speedup'], marker='o', linewidth=2, color='#1f77b4', label='Measured Speedup')
 ax1.plot(df_strong['Threads'], df_strong['Ideal_Speedup'], linestyle='--', color='gray', label='Ideal (Linear) Speedup')
 
-# Memory wall
+# Memory bandwidth saturation limit
 saturation_x = df_strong['Threads'].iloc[5:]
 saturation_y = df_strong['Speedup'].iloc[5:]
 ax1.plot(saturation_x, saturation_y, color='red', linewidth=2, label='Memory Bandwidth Saturation')
@@ -72,7 +85,9 @@ ax2.legend(fontsize=11)
 plt.suptitle('Qlassical Simulator: Hardware Profiling on Karolina', fontsize=16, y=1.02)
 plt.tight_layout()
 
-# Save high-res for the thesis
+# -------------------------------------------------------------
+# Figure Export
+# -------------------------------------------------------------
 plt.savefig('hpc_scaling_results.png', dpi=300, bbox_inches='tight')
 print("Plot successfully generated and saved as 'hpc_scaling_results.png'")
 plt.show()

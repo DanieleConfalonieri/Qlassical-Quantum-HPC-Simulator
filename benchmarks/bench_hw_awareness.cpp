@@ -1,3 +1,11 @@
+// -------------------------------------------------------------
+// Qlassical — Hardware-Awareness Optimization Matrix Benchmark
+// -------------------------------------------------------------
+//
+// Evaluates simulation execution time and gate count reduction
+// across optimization strategies: Baseline, SWAP-only, Fusion-only,
+// and combined SWAP + Gate Fusion across 24-28 qubits.
+
 #include <benchmark/benchmark.h>
 #include <memory>
 #include <vector>
@@ -14,6 +22,11 @@ using namespace qlassical::middleware;
 using namespace qlassical::backend;
 using namespace qlassical;
 
+// -------------------------------------------------------------
+// Circuit Generator Helper
+// -------------------------------------------------------------
+
+// Constructs clustered circuits with localized entanglement to stress NUMA boundaries.
 IRModule make_clustered_circuit(uint32_t num_qubits, uint32_t cluster_size, uint32_t depth_per_cluster) {
     IRModule module(num_qubits);
     for (uint32_t start_q = 0; start_q < num_qubits; start_q += cluster_size) {
@@ -39,7 +52,11 @@ IRModule make_clustered_circuit(uint32_t num_qubits, uint32_t cluster_size, uint
     return module;
 }
 
-// Define 4 strategies
+// -------------------------------------------------------------
+// Optimization Strategy Matrix
+// -------------------------------------------------------------
+
+// Transpiler optimization configurations under evaluation.
 enum class OptStrategy { 
     BASELINE = 0, 
     SWAP_ONLY = 1, 
@@ -47,6 +64,9 @@ enum class OptStrategy {
     SWAP_AND_FUSION = 3 
 };
 
+// -------------------------------------------------------------
+// Benchmark Kernel: Strategy Comparison Matrix
+// -------------------------------------------------------------
 static void BM_Thesis_Matrix(benchmark::State& state) {
     uint32_t num_qubits = static_cast<uint32_t>(state.range(0));
     OptStrategy strategy = static_cast<OptStrategy>(state.range(1));
@@ -64,7 +84,7 @@ static void BM_Thesis_Matrix(benchmark::State& state) {
     Middleware middleware;
     middleware.transpile(module, Backend::CPU_OPENMP, config);
 
-    // Telemetry for the final output
+    // Telemetry reporting gate count changes at maximum qubit scale (28 qubits)
     if (num_qubits == 28) {
         std::string s_name;
         if (strategy == OptStrategy::BASELINE) s_name = "BASELINE     ";

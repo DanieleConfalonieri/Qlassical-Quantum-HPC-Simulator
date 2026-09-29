@@ -1,6 +1,9 @@
-// ------------------------------------
-// Qlassical - CircuitRunner.hpp Tests
-// ------------------------------------
+// -------------------------------------------------------------
+// Qlassical — CircuitRunner Unit Tests (Catch2)
+// -------------------------------------------------------------
+//
+// Comprehensive unit tests for CircuitRunner orchestration,
+// multi-block state vector continuity, and error handling.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>

@@ -1,3 +1,10 @@
+// -------------------------------------------------------------
+// Qlassical — AlignedAllocator Unit Tests (Catch2)
+// -------------------------------------------------------------
+//
+// Unit tests verifying 64-byte memory alignment guarantees and
+// interoperability with standard STL containers (std::vector).
+
 #include <backend/aligned_allocator.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <complex>

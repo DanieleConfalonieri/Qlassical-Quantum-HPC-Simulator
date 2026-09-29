@@ -1,3 +1,10 @@
+// -------------------------------------------------------------
+// Qlassical — OpenMP Strong & Weak Scaling Benchmarks
+// -------------------------------------------------------------
+//
+// Evaluates strong scaling (fixed 26-qubit workload across thread counts)
+// and weak scaling (constant memory per thread up to node capacity).
+
 #include <benchmark/benchmark.h>
 #include <omp.h>
 #include <memory>
@@ -15,6 +22,11 @@ using namespace qlassical::middleware;
 using namespace qlassical::backend;
 using namespace qlassical;
 
+// -------------------------------------------------------------
+// Circuit Generator Helper
+// -------------------------------------------------------------
+
+// Constructs clustered circuits with localized entanglement to evaluate scaling.
 IRModule make_clustered_circuit(uint32_t num_qubits, uint32_t cluster_size, uint32_t depth_per_cluster) {
     IRModule module(num_qubits);
     for (uint32_t start_q = 0; start_q < num_qubits; start_q += cluster_size) {
@@ -40,13 +52,13 @@ IRModule make_clustered_circuit(uint32_t num_qubits, uint32_t cluster_size, uint
     return module;
 }
 
-// ==========================================
-// A. STRONG SCALING
-// Dimensione fissa (26 Qubit), Thread variabili.
-// Obiettivo: Trovare il punto di saturazione della memoria.
-// ==========================================
+// -------------------------------------------------------------
+// A. Strong Scaling Benchmark
+// Fixed workload (26 qubits) across variable OpenMP thread counts.
+// Objective: Identify memory bandwidth saturation points.
+// -------------------------------------------------------------
 static void BM_Strong_Scaling(benchmark::State& state) {
-    uint32_t num_qubits = 26; // Fissato a ~1 GB di memoria, sufficiente per stressare la RAM
+    uint32_t num_qubits = 26; // Fixed at ~1 GB memory footprint to stress memory bandwidth
     int num_threads = static_cast<int>(state.range(0));
     
     omp_set_num_threads(num_threads);
@@ -54,7 +66,7 @@ static void BM_Strong_Scaling(benchmark::State& state) {
     IRModule module = make_clustered_circuit(num_qubits, 6, 15);
     TranspilerConfig config;
     config.enable_gate_fusion = true;
-    config.enable_hw_awareness = true; // Usiamo la best configuration trovata
+    config.enable_hw_awareness = true; // Use optimal transpilation configuration
     
     Middleware middleware;
     middleware.transpile(module, Backend::CPU_OPENMP, config);
@@ -70,30 +82,29 @@ static void BM_Strong_Scaling(benchmark::State& state) {
     }
 }
 
-// Range: 1, 2, 4, 8, 16, 32, 64, 112 (Max GPP core su MN5)
+// Thread count range: 1, 2, 4, 8, 16, 32, 64, 112 (node core capacity)
 BENCHMARK(BM_Strong_Scaling)
     ->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16)->Arg(32)->Arg(64)->Arg(112)
     ->UseRealTime()
     ->Unit(benchmark::kMillisecond);
 
 
-// ==========================================
-// B. WEAK SCALING
-// Carico per thread costante. 
-// Ogni raddoppio dei thread raddoppia la memoria (aggiungendo 1 qubit).
-// Obiettivo: Verificare che il tempo resti costante.
-// ==========================================
+// -------------------------------------------------------------
+// B. Weak Scaling Benchmark
+// Constant workload per thread (doubling threads doubles memory via +1 qubit).
+// Objective: Verify runtime constancy as problem scale increases.
+// -------------------------------------------------------------
 static void BM_Weak_Scaling(benchmark::State& state) {
     int shift = static_cast<int>(state.range(0));
     
-    // Partiamo da 22 Qubit per 1 Thread (circa 64 MB).
+    // Base workload: 22 qubits for 1 thread (~64 MB).
     // shift=0 -> 22Q, 1T
     // shift=1 -> 23Q, 2T
-    // shift=2 -> 24Q, 4T ... e così via.
+    // shift=2 -> 24Q, 4T, etc.
     uint32_t num_qubits = 22 + shift;
     int num_threads = 1 << shift; 
 
-    // Cap a 112 thread se sforiamo la potenza del nodo (es. 128)
+    // Cap at 112 threads to match physical node core count
     if (num_threads > 112) {
         num_threads = 112; 
     }
@@ -119,7 +130,7 @@ static void BM_Weak_Scaling(benchmark::State& state) {
     }
 }
 
-// shift: da 0 (1 thread) a 6 (64 thread)
+// Shift range: from 0 (1 thread) to 6 (64 threads)
 BENCHMARK(BM_Weak_Scaling)
     ->DenseRange(0, 6, 1)
     ->UseRealTime()

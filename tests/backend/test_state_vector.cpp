@@ -1,3 +1,10 @@
+// -------------------------------------------------------------
+// Qlassical — CPUStateVector Unit Tests (Catch2)
+// -------------------------------------------------------------
+//
+// Verification of state vector allocation, |0...0> initialization,
+// state reset, and 64-byte memory alignment.
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <backend/cpu_state_vector.hpp>

@@ -1,3 +1,10 @@
+// -------------------------------------------------------------
+// Qlassical — Quantum Algorithm Integration Tests (Catch2)
+// -------------------------------------------------------------
+//
+// End-to-end integration tests simulating complete quantum algorithms:
+// Deutsch Algorithm and Quantum Teleportation protocol.
+
 #include <backend/cpu_openmp_engine.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -102,13 +109,13 @@ TEST_CASE("Quantum Teleportation", "[integration][algos]") {
 
   CPUOpenMPEngine engine(initial_state, std::optional<uint64_t>(seed), 2);
   
-  // 1. Entanglement on Alice's 
+  // 1. Entanglement and Bell measurement on Alice's side
   QuantumCircuit alice_circuit(3);
-  alice_circuit.h(1).cx(1, 2);         // 1. Entangled pair between Alice(q1) and Bob(q2)
-  alice_circuit.cx(0, 1).h(0);         // 2. Alice entangles her qubit |phi>(q0)
-  alice_circuit.measure(0).measure(1); // 3. Alice measures q0 and q1
+  alice_circuit.h(1).cx(1, 2);         // Entangled Bell pair between Alice (q1) and Bob (q2)
+  alice_circuit.cx(0, 1).h(0);         // Alice entangles source qubit |phi> (q0) with q1
+  alice_circuit.measure(0).measure(1); // Alice measures q0 and q1
   
-  // 2. Proceed with the partial measurement (the engine stores the collapsed StateVector!)
+  // 2. Partial measurement and state collapse
   engine.execute(alice_circuit.release());
   
   auto ms = engine.measurements();
@@ -116,7 +123,7 @@ TEST_CASE("Quantum Teleportation", "[integration][algos]") {
   uint8_t m0 = ms[0];
   uint8_t m1 = ms[1];
   
-  // 3: Bob's Correction operations, based on measurements
+  // 3. Bob's conditional correction operations
   QuantumCircuit bob_circuit(3);
   if (m1 == 1) bob_circuit.x(2);
   if (m0 == 1) bob_circuit.z(2);
@@ -124,7 +131,7 @@ TEST_CASE("Quantum Teleportation", "[integration][algos]") {
   // Execute Bob's circuit on the same engine, continuing the simulation
   engine.execute(bob_circuit.release());
   
-  // VERIFICATION
+  // 4. Verification of teleported state on Bob's qubit (q2)
   // q0 and q1 collapsed to m0 and m1. q2 should perfectly contain |phi>.
   // Final expected computational basis states:
   // |0 m1 m0> -> Index: (0 * 4) + (m1 * 2) + m0

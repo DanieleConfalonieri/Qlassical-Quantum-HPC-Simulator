@@ -1,3 +1,10 @@
+// -------------------------------------------------------------
+// Qlassical — Middleware Optimization Passes Unit Tests (Catch2)
+// -------------------------------------------------------------
+//
+// Tests for DAG dependency construction, gate fusion heuristics,
+// and NUMA-aware qubit windowing SWAP injection.
+
 #include <catch2/catch_test_macros.hpp>
 #include <frontend/frontend.hpp>
 #include <middleware/middleware.hpp>

@@ -1,6 +1,13 @@
 #ifndef QLASSICAL_HW_TOPOLOGY_HPP
 #define QLASSICAL_HW_TOPOLOGY_HPP
 
+// -------------------------------------------------------------
+// HardwareTopology — Hardware Architecture & NUMA Introspection
+// -------------------------------------------------------------
+//
+// Discovers hardware topology, memory hierarchies, and NUMA node domains
+// using hwloc to guide middleware circuit windowing and SWAP placement.
+
 #include <cstdint>
 #include <cmath>
 #include <memory>
@@ -13,32 +20,41 @@
 
 namespace qlassical::middleware {
 
-    // 1. Abstract Base Class
+    // ---------------------------------------------------------
+    // HardwareTopology — Abstract Hardware Topology Interface
+    // ---------------------------------------------------------
+
     class HardwareTopology {
     public:
         virtual ~HardwareTopology() = default;
 
-        // Retrieve critical metrics
+        // -----------------
+        // Metric Accessors
+        // -----------------
+
+        // Total memory size of a single NUMA node in bytes.
         virtual std::size_t get_numa_memory_size_bytes() const = 0;
+
+        // Total count of NUMA nodes present on the host system.
         virtual uint32_t get_numa_nodes_count() const = 0;
 
-        // Compute the maximum number of qubits that fit entirely in a NUMA domain
-        // k_safe = floor(log2(M / 16)), where 16 represents sizeof(std::complex<double>)
+        // -----------------
+        // Safe Qubit Limit
+        // -----------------
+
+        // Computes the maximum number of qubits that fit entirely within a NUMA domain.
+        // Theoretical formula: k_safe = floor(log2(usable_memory / sizeof(complex<double>))).
+        // For benchmarking purposes, k_safe is set to 18 to trigger NUMA-aware SWAP injection
+        // before encountering the host RAM capacity ceiling.
         uint16_t get_safe_qubit_limit() const {
-            /*
-            std::size_t memory_bytes = get_numa_memory_size_bytes();
-            if (memory_bytes < 16) return 0;
-            // 15% of the memory is reserved for system overhead, leaving 85% usable for qubit storage
-            double usable_memory = static_cast<double>(memory_bytes) * 0.85;
-            return static_cast<uint16_t>(std::floor(std::log2(usable_memory / 16.0)));
-            */
-            // Problem: swaps were not being injected because k_safe was too high...the RAM wall hits before the NUMA one. 
-            // Let us hardcode k_safe = 18 to see the effect of the SWAP injection on the final transpiled circuit size.
             return 18;
         }
     };
 
-    // 2. Concrete Class: CPUHwlocTopology
+    // ---------------------------------------------------------
+    // CPUHwlocTopology — CPU NUMA Topology Introspection (hwloc)
+    // ---------------------------------------------------------
+
 #if defined(ENABLE_HWLOC)
     class CPUHwlocTopology : public HardwareTopology {
     private:
@@ -62,7 +78,7 @@ namespace qlassical::middleware {
             if (numa && numa->attr) {
                 numa_memory_size = numa->attr->numanode.local_memory;
             } else {
-                // Fallback to typical 4 GB if querying fails
+                // Fallback to default 4 GB if querying fails
                 numa_memory_size = 4ULL * 1024 * 1024 * 1024; 
             }
 
@@ -83,27 +99,29 @@ namespace qlassical::middleware {
         uint32_t get_numa_nodes_count() const override { return numa_nodes; }
     };
 #else
-    // Fallback if hwloc is not available on the system during build
+    // ---------------------------------------------------------
+    // CPUHwlocTopology — Fallback Stub (hwloc Disabled)
+    // ---------------------------------------------------------
+
     class CPUHwlocTopology : public HardwareTopology {
     public:
-        std::size_t get_numa_memory_size_bytes() const override { return 4ULL * 1024 * 1024 * 1024; } // 4GB fallback
+        std::size_t get_numa_memory_size_bytes() const override { return 4ULL * 1024 * 1024 * 1024; } // 4 GB fallback
         uint32_t get_numa_nodes_count() const override { return 1; }
     };
 #endif
 
-    // 3. Concrete Class: GPUCudaTopology (Stub)
-    //class GPUCudaTopology : public HardwareTopology {
-    //public:
-    //    std::size_t get_numa_memory_size_bytes() const override {
-    //        // TODO: Use cudaGetDeviceProperties to dynamically query the global memory size
-    //        return 4ULL * 1024 * 1024 * 1024; // e.g., 4GB fallback for global memory
-    //    }
-    //    
-    //    uint32_t get_numa_nodes_count() const override {
-    //        // GPUs don't map to NUMA nodes identically, but we can treat it as 1 local domain for now
-    //        return 1; 
-    //    }
-    //};
+    // ---------------------------------------------------------
+    // GPUCudaTopology — GPU Topology Stub (Future Expansion)
+    // ---------------------------------------------------------
+    // class GPUCudaTopology : public HardwareTopology {
+    // public:
+    //     std::size_t get_numa_memory_size_bytes() const override {
+    //         return 4ULL * 1024 * 1024 * 1024; // 4 GB fallback
+    //     }
+    //     uint32_t get_numa_nodes_count() const override {
+    //         return 1;
+    //     }
+    // };
 
 } // namespace qlassical::middleware
 

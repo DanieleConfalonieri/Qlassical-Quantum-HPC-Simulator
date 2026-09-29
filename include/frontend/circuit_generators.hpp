@@ -1,9 +1,17 @@
 #ifndef QLASSICAL_FRONTEND_CIRCUIT_GENERATORS_HPP
 #define QLASSICAL_FRONTEND_CIRCUIT_GENERATORS_HPP
 
-#include <frontend/frontend.hpp>
-#include <cstdint>
+// -------------------------------------------------------------
+// Circuit Generators — Algorithmic Quantum Circuit Benchmarks
+// -------------------------------------------------------------
+//
+// Utility functions for generating standard synthetic quantum circuits
+// (Hardware-Efficient Ansatz, Quantum Fourier Transform) for benchmarks.
+
 #include <cmath>
+#include <cstdint>
+
+#include <frontend/frontend.hpp>
 
 namespace qlassical::frontend {
 
@@ -60,6 +68,6 @@ namespace qlassical::frontend {
         
         return qc;
     }
-}
+} // namespace qlassical::frontend
 
 #endif // QLASSICAL_FRONTEND_CIRCUIT_GENERATORS_HPP

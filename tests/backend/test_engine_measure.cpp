@@ -1,3 +1,10 @@
+// -------------------------------------------------------------
+// Qlassical — CPU OpenMP Measurement & Collapse Tests (Catch2)
+// -------------------------------------------------------------
+//
+// Verification of Born's rule collapse, deterministic seeded PRNG,
+// engine reset behaviors, and entangled Bell state measurements.
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <backend/cpu_openmp_engine.hpp>
@@ -6,7 +13,11 @@
 using namespace qlassical;
 using namespace qlassical::backend;
 
-// Helper to easily construct gate instructions
+// -------------------------------------------------------------
+// Instruction Construction Helper
+// -------------------------------------------------------------
+
+// Constructs a GateInstr instance for testing purposes.
 inline GateInstr make_gate(GateType t, uint8_t q0 = 255, uint8_t q1 = 255, uint8_t q2 = 255, float param = 0.0f, uint32_t mat_idx = 0) {
     GateInstr g{};
     g.type = t;

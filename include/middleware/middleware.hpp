@@ -1,39 +1,64 @@
 #ifndef QLASSICAL_MIDDLEWARE_HPP
 #define QLASSICAL_MIDDLEWARE_HPP
 
+// -------------------------------------------------------------
+// Middleware — Hardware-Aware Circuit Transpiler & Optimizer
+// -------------------------------------------------------------
+//
+// Pipelined intermediate compilation layer between Frontend IRModule
+// and Backend execution engines.
+//
+// Key Passes:
+//   1. Directed Acyclic Graph (DAG) construction and dependency tracking.
+//   2. Aggressive gate fusion into dense unitary blocks.
+//   3. Qubit windowing with NUMA-aware SWAP injection.
+
 #include <Eigen/Dense>
 #include <cstdint>
-#include <frontend/frontend.hpp>
 #include <memory>
-#include <middleware/hw_topology.hpp>
 #include <optional>
 #include <span>
 #include <stdexcept>
 #include <vector>
 
+#include <frontend/frontend.hpp>
+#include <middleware/hw_topology.hpp>
+
 namespace qlassical::middleware {
 
-// --------------------------------------------------
-// Backend - Target Execution Backend Identification
-// --------------------------------------------------
+// -------------------------------------------------------------
+// Backend — Target Execution Backend Identification
+// -------------------------------------------------------------
+
 enum class Backend : uint8_t { CPU_OPENMP = 0x00, MPI = 0x01, GPU = 0x02 };
 
 using BackendType = Backend;
 
-// --------------------------------------------------
-// Qubit Windowing Cost Model Interface
-// --------------------------------------------------
+// -------------------------------------------------------------
+// WindowingCostModel — Cost Model Interface for Qubit Swapping
+// -------------------------------------------------------------
+//
+// Evaluates the cost-benefit tradeoff of injecting SWAPs between
+// active and inactive qubits to respect NUMA boundaries.
+
 class WindowingCostModel {
 public:
   virtual ~WindowingCostModel() = default;
 
+  // Evaluates candidate qubit swaps based on window gate frequency.
+  // Returns pair of (active_qubit, victim_qubit) if beneficial, or nullopt.
   virtual std::optional<std::pair<uint16_t, uint16_t>>
   evaluate_swap(std::span<const uint32_t> window_frequencies,
                 std::span<const uint16_t> log_to_phys,
                 std::span<const uint16_t> phys_to_log) const = 0;
 
+  // Returns the maximum number of qubits accommodated in the safe NUMA zone.
   virtual uint16_t get_k_safe() const = 0;
 };
+
+// -------------------------------------------------------------
+// ThresholdCostModel — Penalty-Based Qubit Windowing Evaluator
+// -------------------------------------------------------------
 
 class ThresholdCostModel : public WindowingCostModel {
 private:
@@ -55,8 +80,8 @@ public:
     uint16_t q_cand = 0xFFFF;
     uint32_t max_retention = 0;
 
-    // Iterate over all logical qubits to find one that is active in this window
-    // but physically mapped outside the safe zone.
+    // Iterate over all logical qubits to find one active in this window
+    // but physically mapped outside the safe NUMA zone.
     for (std::size_t log_q = 0; log_q < window_frequencies.size(); ++log_q) {
       if (window_frequencies[log_q] > 0 && log_to_phys[log_q] > k_safe) {
         uint32_t retention = window_frequencies[log_q] * numa_penalty;
@@ -71,16 +96,14 @@ public:
       return std::nullopt;
     }
 
-    // Find a victim logical qubit v that is currently in the safe zone
-    // WITH CONSTRAINT: victim must not be a working qubit in the window
+    // Find a victim logical qubit in the safe zone that is NOT active in this window.
     uint16_t v_cand = 0xFFFF;
 
     for (std::size_t log_v = 0; log_v < window_frequencies.size(); ++log_v) {
       if (log_to_phys[log_v] <= k_safe) {
-        // Strict constraint: only pick a victim if it is NOT in the breathing window
         if (window_frequencies[log_v] == 0) {
            v_cand = static_cast<uint16_t>(log_v);
-           break; // perfect victim found
+           break; // Optimal victim found
         }
       }
     }
@@ -93,9 +116,9 @@ public:
   }
 };
 
-// --------------------------------------------------
-// Data-Oriented DAG Representation
-// --------------------------------------------------
+// -------------------------------------------------------------
+// DAGNode & DAG — Data-Oriented Dependency Graph Representation
+// -------------------------------------------------------------
 constexpr uint8_t MAX_GATE_ARITY = 4;
 constexpr uint32_t NULL_NODE = 0xFFFFFFFF;
 constexpr std::size_t MAX_MATRIX_DIM = 1ULL << MAX_GATE_ARITY;
@@ -118,8 +141,12 @@ public:
   std::vector<DAGNode> nodes;
   std::vector<GateInstr> rewritten_stream;
 
-  // Builds the DAG in O(N) using a frontier approach
-  // Executes reserve() to eliminate dynamic reallocations
+  // ---------------------------------
+  // DAG Construction & Linearization
+  // ---------------------------------
+
+  // Builds the DAG in O(N) using a frontier array tracking qubit modifications.
+  // Pre-allocates node capacity to eliminate dynamic memory reallocations.
   static DAG build(IRModule &&module) {
     DAG dag;
     // The DAG takes ownership of the UnitaryPool from the module (zero-copy)
@@ -167,8 +194,7 @@ public:
     return dag;
   }
 
-  // Flattens the DAG back into a linear instruction stream, bypassing fused
-  // nodes
+  // Flattens the DAG back into a linear instruction stream, bypassing fused nodes.
   IRModule release(uint32_t num_qubits) && {
     IRModule optimized_module(num_qubits);
 
@@ -189,12 +215,14 @@ public:
   }
 };
 
-// --------------------------------------------------
-// Isolated Gate Fusion Math (Eigen Kronecker Product)
-// --------------------------------------------------
+// -------------------------------------------------------------
+// FusionMath — Zero-Allocation Unitary Matrix Fusion Math (Eigen)
+// -------------------------------------------------------------
+
 namespace FusionMath {
-// High-Performance Branchless Scatter Expansion
-// Strictly Zero-Allocation (Stack only)
+
+// High-performance branchless scatter expansion of sub-block unitaries.
+// Strictly stack-allocated (zero dynamic memory allocation).
 inline GateMatrix expand_matrix(const GateMatrix &U,
                                 std::span<const uint16_t> q_sub,
                                 std::span<const uint16_t> q_full) {
@@ -268,6 +296,7 @@ inline GateMatrix expand_matrix(const GateMatrix &U,
   return M_full;
 }
 
+// Fuses two unitary matrices (U2 applied after U1) across their joint qubit footprint.
 inline GateMatrix
 fuse_matrices(const GateMatrix &U1, std::span<const uint16_t> q1,
               const GateMatrix &U2, std::span<const uint16_t> q2,
@@ -298,19 +327,29 @@ fuse_matrices(const GateMatrix &U1, std::span<const uint16_t> q1,
   // U2 is applied after U1, so we return M2 * M1
   return M2 * M1;
 }
+
 } // namespace FusionMath
 
-// -----------------------------------------------------------
-// Middleware - Hardware-Aware Circuit Transpiler and Optimizer
-// -----------------------------------------------------------
+// -------------------------------------------------------------
+// TranspilerConfig — Configuration Options for Transpilation Passes
+// -------------------------------------------------------------
+
 struct TranspilerConfig {
   bool enable_gate_fusion = true;
   bool enable_hw_awareness = true;
 };
 
+// -------------------------------------------------------------
+// Middleware — Hardware-Aware Circuit Transpiler and Optimizer
+// -------------------------------------------------------------
+
 class Middleware {
 public:
-  // Converts Standard Gates into Dense Matrices (Helper)
+  // ------------------
+  // Matrix Conversion
+  // ------------------
+
+  // Converts standard analytic gates into explicit dense matrix representations.
   static GateMatrix get_matrix(const GateInstr &instr,
                                const UnitaryPool &pool) {
     if (instr.type == GateType::UNITARY ||
@@ -353,6 +392,7 @@ public:
     throw std::runtime_error("Middleware::get_matrix unsupported gate type.");
   }
 
+  // Checks if an instruction is eligible for gate fusion passes.
   static bool is_fusable(const GateInstr &instr) {
     return instr.type == GateType::H || instr.type == GateType::X ||
            instr.type == GateType::Y || instr.type == GateType::Z ||
@@ -361,6 +401,9 @@ public:
            instr.type == GateType::FUSED_BLOCK;
   }
 
+  // --------------------------
+  // Constructors & Destructors
+  // --------------------------
   constexpr Middleware() noexcept = default;
 
   Middleware(Middleware &&) noexcept = default;
@@ -369,6 +412,11 @@ public:
   Middleware &operator=(const Middleware &) = default;
   ~Middleware() = default;
 
+  // ----------------------
+  // Transpilation Pipeline
+  // ----------------------
+
+  // Transpiles and optimizes the IRModule for the requested execution backend.
   void transpile(IRModule &module, Backend backend = Backend::CPU_OPENMP, const TranspilerConfig& config = {}) {
     switch (backend) {
     case Backend::CPU_OPENMP:
@@ -387,16 +435,20 @@ public:
   }
 
 private:
+  // -----------------------------
+  // Backend Pass Orchestrators
+  // -----------------------------
+
   void transpile_cpu_openmp(IRModule &module, const TranspilerConfig& config) {
-    // 1. Build the DAG (O(N), contiguous memory, zero dynamic reallocations)
+    // 1. Build the dependency DAG (O(N) construction, zero dynamic reallocation)
     DAG dag = DAG::build(std::move(module));
 
-    // 2. Aggressive Gate Fusion Pass
+    // 2. Aggressive gate fusion pass into dense multi-qubit unitaries
     if (config.enable_gate_fusion) {
       pass_gate_fusion(dag);
     }
 
-    // 3. Qubit Windowing Pass (JIT Streamer)
+    // 3. Qubit windowing pass (NUMA-aware SWAP scheduling)
     if (config.enable_hw_awareness) {
       CPUHwlocTopology topology;
       uint16_t k_safe = topology.get_safe_qubit_limit();
@@ -504,16 +556,17 @@ private:
         }
       }
 
-      // --- FUSION HEURISTIC ---
-      // Do not commit fusion if it's only 2 standard gates.
-      // A block of 2 standard gates is faster natively than as a Gather/Scatter
-      // FUSED_BLOCK.
+      // -------------------------------------------------------------
+      // Fusion Heuristic: Avoid committing 2-gate standard blocks
+      // Direct kernel execution of two standard gates outperforms
+      // generic gather-scatter multi-qubit fused block kernels.
+      // -------------------------------------------------------------
       if (block.size() == 1)
         continue;
       if (block.size() == 2 && !has_dense)
         continue;
 
-      // Commit Fusion: Multiply matrices topologically
+      // Commit fusion: multiply matrices topologically
       GateMatrix M_fused =
           get_matrix(dag.nodes[block[0]].instr, dag.unitary_pool);
       std::array<uint16_t, MAX_GATE_ARITY> current_q;
@@ -542,7 +595,7 @@ private:
           current_q[u] = out_q[u];
       }
 
-      // Stitch graph edges
+      // Stitch dependency graph edges for the newly merged node
       std::array<uint32_t, MAX_GATE_ARITY> block_inputs;
       std::array<uint32_t, MAX_GATE_ARITY> block_outputs;
 
@@ -582,12 +635,12 @@ private:
         block_outputs[u] = last_out;
       }
 
-      // Store in pool
+      // Store fused unitary into UnitaryPool
       std::vector<std::complex<double>> m_data(M_fused.data(),
                                                M_fused.data() + M_fused.size());
       uint32_t new_matrix_idx = dag.unitary_pool.store(m_data, current_size);
 
-      // Morph Node A into the Fused Block
+      // Morph root node into the fused block instruction
       DAGNode &A = dag.nodes[block[0]];
       A.instr.type = GateType::FUSED_BLOCK;
       A.instr.set_arity(current_size);
@@ -625,7 +678,7 @@ private:
         }
       }
 
-      // Mark absorbed nodes as fused
+      // Mark absorbed predecessor/successor nodes as fused
       for (std::size_t k = 1; k < block.size(); ++k) {
         dag.nodes[block[k]].is_fused = true;
       }
@@ -633,9 +686,12 @@ private:
   }
 
 public:
+  // -------------------------------------------------------------
+  // Qubit Windowing Pass (NUMA-Aware SWAP Injection)
+  // -------------------------------------------------------------
   void pass_qubit_windowing(DAG &dag, const WindowingCostModel &cost_model,
                             uint32_t num_qubits) {
-    // JIT Streamer Pass
+    // Initialize identity bidirectional mapping between logical and physical qubits
     std::vector<uint16_t> log_to_phys(num_qubits);
     std::vector<uint16_t> phys_to_log(num_qubits);
     for (uint32_t i = 0; i < num_qubits; ++i) {
@@ -654,7 +710,7 @@ public:
         continue;
       }
 
-      // 1. Calculate chunked breathing window [i, j)
+      // 1. Calculate chunked breathing window [i, j) respecting k_safe limit
       std::fill(frequencies.begin(), frequencies.end(), 0);
       uint32_t unique_qubits = 0;
       std::size_t j = i;
@@ -674,13 +730,12 @@ public:
           }
         }
         
-        // If adding j exceeds k_safe, we stop expanding the window 
-        // (unless the window is empty, to guarantee forward progress)
+        // If adding j exceeds k_safe, stop expanding window (unless empty to ensure forward progress)
         if (unique_qubits + new_unique > safe_limit && j > i) {
           break;
         }
         
-        // Include instruction j in the window
+        // Include instruction j in current window
         for (uint8_t k = 0; k < dag.nodes[j].instr.arity(); ++k) {
           uint16_t q = dag.nodes[j].instr.qubits[k];
           if (q < num_qubits) {
@@ -691,7 +746,7 @@ public:
         j++;
       }
 
-      // 2. Global SWAPs for the entire window [i, j)
+      // 2. Evaluate and inject global SWAPs for the current window
       while (true) {
         auto swap_pair = cost_model.evaluate_swap(frequencies, log_to_phys, phys_to_log);
         if (!swap_pair.has_value()) break;
@@ -711,14 +766,14 @@ public:
 
         dag.rewritten_stream.push_back(swap_instr);
 
-        // Update mappings
+        // Update bidirectional mappings
         log_to_phys[log_p] = phys_v;
         log_to_phys[log_v] = phys_p;
         phys_to_log[phys_p] = log_v;
         phys_to_log[phys_v] = log_p;
       }
 
-      // 3. Rewrite all instructions in the window [i, j)
+      // 3. Rewrite all instructions in the window [i, j) to physical qubits
       for (std::size_t w = i; w < j; ++w) {
         if (dag.nodes[w].is_fused) continue;
         
@@ -737,6 +792,9 @@ public:
     }
   }
 
+  // ----------------------------------
+  // Future Backend Transpiler Stubs
+  // ----------------------------------
   void transpile_mpi([[maybe_unused]] IRModule &module) {}
   void transpile_gpu([[maybe_unused]] IRModule &module) {}
 };
