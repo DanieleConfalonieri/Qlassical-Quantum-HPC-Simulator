@@ -2,7 +2,7 @@
 #define QLASSICAL_MIDDLEWARE_HPP
 
 // -------------------------------------------------------------
-// Middleware — Hardware-Aware Circuit Transpiler & Optimizer
+// Middleware - Hardware-Aware Circuit Transpiler & Optimizer
 // -------------------------------------------------------------
 //
 // Pipelined intermediate compilation layer between Frontend IRModule
@@ -10,7 +10,7 @@
 //
 // Key Passes:
 //   1. Directed Acyclic Graph (DAG) construction and dependency tracking.
-//   2. Aggressive gate fusion into dense unitary blocks.
+//   2. Gate fusion into dense unitary blocks.
 //   3. Qubit windowing with NUMA-aware SWAP injection.
 
 #include <Eigen/Dense>
@@ -27,7 +27,7 @@
 namespace qlassical::middleware {
 
 // -------------------------------------------------------------
-// Backend — Target Execution Backend Identification
+// Backend - Target Execution Backend Identification
 // -------------------------------------------------------------
 
 enum class Backend : uint8_t { CPU_OPENMP = 0x00, MPI = 0x01, GPU = 0x02 };
@@ -35,7 +35,7 @@ enum class Backend : uint8_t { CPU_OPENMP = 0x00, MPI = 0x01, GPU = 0x02 };
 using BackendType = Backend;
 
 // -------------------------------------------------------------
-// WindowingCostModel — Cost Model Interface for Qubit Swapping
+// WindowingCostModel - Cost Model Interface for Qubit Swapping
 // -------------------------------------------------------------
 //
 // Evaluates the cost-benefit tradeoff of injecting SWAPs between
@@ -57,7 +57,7 @@ public:
 };
 
 // -------------------------------------------------------------
-// ThresholdCostModel — Penalty-Based Qubit Windowing Evaluator
+// ThresholdCostModel - Penalty-Based Qubit Windowing Evaluator
 // -------------------------------------------------------------
 
 class ThresholdCostModel : public WindowingCostModel {
@@ -132,7 +132,20 @@ public:
 };
 
 // -------------------------------------------------------------
-// DAGNode & DAG — Data-Oriented Dependency Graph Representation
+// GreedyCostModel - Aggressive Qubit Windowing Evaluator
+// -------------------------------------------------------------
+//
+// Evicts any active qubit mapped outside the safe NUMA zone into
+// the safe zone by setting swap_penalty = 0.
+
+class GreedyCostModel : public ThresholdCostModel {
+public:
+  explicit GreedyCostModel(uint16_t safe_limit)
+      : ThresholdCostModel(safe_limit, 1, 0) {}
+};
+
+// -------------------------------------------------------------
+// DAGNode & DAG - Data-Oriented Dependency Graph Representation
 // -------------------------------------------------------------
 constexpr uint8_t MAX_GATE_ARITY = 4;
 constexpr uint32_t NULL_NODE = 0xFFFFFFFF;
@@ -231,7 +244,7 @@ public:
 };
 
 // -------------------------------------------------------------
-// FusionMath — Zero-Allocation Unitary Matrix Fusion Math (Eigen)
+// FusionMath - Zero-Allocation Unitary Matrix Fusion Math (Eigen)
 // -------------------------------------------------------------
 
 namespace FusionMath {
@@ -356,7 +369,17 @@ enum class CostModelType : uint8_t {
 };
 
 // -------------------------------------------------------------
-// TranspilerConfig — Configuration Options for Transpilation Passes
+// CostModelType - Available Qubit Windowing Cost Model Strategies
+// -------------------------------------------------------------
+
+enum class CostModelType : uint8_t {
+  THRESHOLD = 0,
+  GREEDY    = 1,
+  CUSTOM    = 2
+};
+
+// -------------------------------------------------------------
+// TranspilerConfig - Configuration Options for Transpilation Passes
 // -------------------------------------------------------------
 
 struct TranspilerConfig {
@@ -386,7 +409,7 @@ struct TranspilerConfig {
 };
 
 // -------------------------------------------------------------
-// Middleware — Hardware-Aware Circuit Transpiler and Optimizer
+// Middleware - Hardware-Aware Circuit Transpiler and Optimizer
 // -------------------------------------------------------------
 
 class Middleware {
@@ -489,7 +512,7 @@ private:
     // 1. Build the dependency DAG (O(N) construction, zero dynamic reallocation)
     DAG dag = DAG::build(std::move(module));
 
-    // 2. Aggressive gate fusion pass into dense multi-qubit unitaries
+    // 2. Gate fusion pass into dense multi-qubit unitaries
     if (config.enable_gate_fusion) {
       pass_gate_fusion(dag);
     }
@@ -530,16 +553,20 @@ private:
       if (!is_fusable(dag.nodes[i].instr))
         continue;
 
+      // Block will contain the indices of nodes to be fused together
       std::vector<uint32_t> block = {static_cast<uint32_t>(i)};
       block.reserve(32);
+      // block_q: what qubits are currently in the fusion block
+      // block_arity: how many qubits are currently in the fusion block
       std::array<uint16_t, MAX_GATE_ARITY> block_q;
       uint8_t block_arity = dag.nodes[i].instr.arity();
       for (uint8_t k = 0; k < block_arity; ++k)
         block_q[k] = dag.nodes[i].instr.qubits[k];
+      // has_dense indicates if any gate in the block is a dense unitary (UNITARY or FUSED_BLOCK)
       bool has_dense = (dag.nodes[i].instr.type == GateType::UNITARY ||
                         dag.nodes[i].instr.type == GateType::FUSED_BLOCK);
 
-      // Aggressively explore the connected component of fusable gates
+      // Explore the connected component of fusable gates (BFS traversal)
       std::size_t head = 0;
       while (head < block.size()) {
         uint32_t b_cand = block[head++];
@@ -560,7 +587,7 @@ private:
           if (already_in_block)
             continue;
 
-          // Causality check: all of `next`'s dependencies must be satisfied
+          // Causality check: all of "next"'s dependencies must be satisfied
           bool causality_ok = true;
           for (uint8_t in_idx = 0; in_idx < dag.nodes[next].instr.arity();
                ++in_idx) {

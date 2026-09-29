@@ -2,7 +2,7 @@
 #define QLASSICAL_BACKEND_STATE_VECTOR_UTILS_HPP
 
 // -------------------------------------------------------------
-// StateVectorUtils — State Vector Bit Manipulation Utilities
+// StateVectorUtils - State Vector Bit Manipulation Utilities
 // -------------------------------------------------------------
 //
 // Utility functions for state vector manipulation across execution backends (CPU, GPU, etc.).

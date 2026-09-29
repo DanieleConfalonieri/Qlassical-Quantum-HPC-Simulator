@@ -2,7 +2,7 @@
 #define QLASSICAL_HW_TOPOLOGY_HPP
 
 // -------------------------------------------------------------
-// HardwareTopology — Hardware Architecture & NUMA Introspection
+// HardwareTopology - Hardware Architecture & NUMA Introspection
 // -------------------------------------------------------------
 //
 // Discovers hardware topology, memory hierarchies, and NUMA node domains
@@ -21,7 +21,7 @@
 namespace qlassical::middleware {
 
     // ---------------------------------------------------------
-    // HardwareTopology — Abstract Hardware Topology Interface
+    // HardwareTopology - Abstract Hardware Topology Interface
     // ---------------------------------------------------------
 
     class HardwareTopology {

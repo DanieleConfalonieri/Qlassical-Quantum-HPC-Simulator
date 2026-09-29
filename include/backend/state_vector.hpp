@@ -2,7 +2,7 @@
 #define QLASSICAL_BACKEND_STATE_VECTOR_BASE_HPP
 
 // -------------------------------------------------------------
-// StateVector — Abstract Base Class for Quantum State Vectors
+// StateVector - Abstract Base Class for Quantum State Vectors
 // -------------------------------------------------------------
 //
 // Defines the common interface for state vector representations across backends.

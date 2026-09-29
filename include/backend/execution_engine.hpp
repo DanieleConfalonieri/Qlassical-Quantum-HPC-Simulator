@@ -2,7 +2,7 @@
 #define QLASSICAL_BACKEND_EXECUTION_ENGINE_HPP
 
 // -----------------------------------------------------------------
-// ExecutionEngine — Abstract Base Class for Quantum Execution Engine
+// ExecutionEngine - Abstract Base Class for Quantum Execution Engine
 // -----------------------------------------------------------------
 //
 // Base interface for all backend simulation engines (CPU OpenMP, MPI, GPU).

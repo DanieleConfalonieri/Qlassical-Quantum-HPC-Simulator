@@ -2,7 +2,7 @@
 #define QLASSICAL_BACKEND_STATE_VECTOR_HPP
 
 // -------------------------------------------------------------
-// CPUStateVector — Contiguous 64-Byte Aligned State Vector (CPU)
+// CPUStateVector - Contiguous 64-Byte Aligned State Vector (CPU)
 // -------------------------------------------------------------
 //
 // Encapsulates the physical memory for exact state vector simulation.
