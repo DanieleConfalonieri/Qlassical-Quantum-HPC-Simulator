@@ -125,6 +125,109 @@ The `CircuitRunner` acts as the master orchestrator for complex or large-scale q
 2. **Zero-Copy State Vector**: When transitioning between execution blocks, `CircuitRunner` extracts the physical `CPUStateVector` from the previous engine via move semantics (`set_state_vector(std::move(previous_sv))`). The multi-gigabyte complex amplitude array is never re-allocated or copied in RAM across block boundaries.
 3. **Mid-Execution Backend Swapping & Hybrid Workflows**: Because `ExecutionEngine` presents an abstract virtual interface, `CircuitRunner` can dynamically transpile block $B_i$ for a CPU OpenMP engine and block $B_{i+1}$ for an MPI or GPU engine mid-execution, passing the state vector handle cleanly between execution engines.
 
+### 2.3 Quick Start: Frontend & Execution
+
+To demonstrate how the Qlassical Frontend and Backend integrate using C++20 zero-cost abstractions, the following self-contained program illustrates the end-to-end workflow: building an entangled quantum register, orchestrating execution with `CircuitRunner`, accessing amplitudes via zero-copy views, and performing projective measurements.
+
+```cpp
+#include <iostream>
+#include <memory>
+#include <complex>
+#include <span>
+#include <bitset>
+#include <iomanip>
+
+#include <frontend/frontend.hpp>
+#include <frontend/circuit_runner.hpp>
+#include <backend/execution_engine.hpp>
+
+int main() {
+    using namespace qlassical;
+
+    // -------------------------------------------------------------
+    // Step 1: Instantiate a QuantumCircuit
+    // -------------------------------------------------------------
+    // Creates a 2-qubit circuit register initialized to ground state |00>.
+    constexpr uint32_t num_qubits = 2;
+    auto circuit = std::make_shared<QuantumCircuit>(num_qubits);
+
+    // -------------------------------------------------------------
+    // Step 2: Apply Quantum Gates to Construct a Bell State (|Phi+>)
+    // -------------------------------------------------------------
+    // Method chaining provides a clean, zero-overhead circuit definition.
+    // Creates superposition on q0: (|0> + |1>) / sqrt(2), then entangles with q1.
+    circuit->h(0)
+            .cx(0, 1);
+
+    // Optional: Append in-circuit measurement directives (collapses state upon execution)
+    // circuit->measure({0, 1});
+
+    // -------------------------------------------------------------
+    // Step 3: Pass Circuit to the CircuitRunner Orchestrator
+    // -------------------------------------------------------------
+    // CircuitRunner manages the full compilation and execution lifecycle.
+    // It defaults to Backend::CPU_OPENMP with MiddleEnd optimization passes enabled.
+    CircuitRunner runner(circuit, Backend::CPU_OPENMP);
+
+    // -------------------------------------------------------------
+    // Step 4: Trigger Execution and Retrieve the Final StateVector
+    // -------------------------------------------------------------
+    // runner.run() performs:
+    //   1. Zero-Copy IR Extraction: Moves the internal IRModule out of the builder.
+    //   2. MiddleEnd Transpilation: Gate fusion and hardware-aware windowing passes.
+    //   3. Backend Dispatch: Spawns OpenMP threads executing bitwise hole-injection kernels.
+    runner.run();
+
+    // Zero-Copy Philosophy:
+    // runner.state() returns a lightweight, non-owning std::span<const std::complex<double>>.
+    // The multi-gigabyte complex amplitude array is NEVER copied or reallocated in RAM;
+    // this view directly references the NUMA first-touch aligned buffer inside the ExecutionEngine.
+    std::span<const std::complex<double>> state = runner.state();
+
+    // -------------------------------------------------------------
+    // Step 5: Access Amplitudes and Evaluate Probabilities / Sampling
+    // -------------------------------------------------------------
+    std::cout << "========================================================\n";
+    std::cout << "  Qlassical Simulation Result: Bell State |Phi+>       \n";
+    std::cout << "========================================================\n";
+    std::cout << std::fixed << std::setprecision(6);
+
+    // Iterate over the state vector amplitudes and compute probabilities via Born's rule: P(i) = |c_i|^2
+    for (std::size_t i = 0; i < state.size(); ++i) {
+        const double prob = std::norm(state[i]);
+        if (prob > 1e-6) {
+            std::cout << "Basis State |" << std::bitset<num_qubits>(i) << "> : "
+                      << "Amplitude = " << state[i]
+                      << " | Probability = " << prob << "\n";
+        }
+    }
+
+    // Demonstrating projective measurement outcomes via the ExecutionEngine interface:
+    // If measurement gates (GateType::MEASURE) were executed, the backend engine collapses
+    // the state vector and records the classical bit outcomes in the measurement register.
+    const backend::ExecutionEngine* engine = runner.engine();
+    if (engine && !engine->measurements().empty()) {
+        std::cout << "\nClassical Measurement Register: ";
+        for (std::size_t q = 0; q < engine->measurements().size(); ++q) {
+            std::cout << "q[" << q << "] = " << static_cast<int>(engine->measurements()[q]) << " ";
+        }
+        std::cout << "\n";
+    }
+
+    return 0;
+}
+```
+
+#### Compiling and Running Standalone Code
+You can compile and run this quick start example inside the containerized environment:
+```bash
+# Compile through Apptainer with OpenMP and Eigen3 headers
+apptainer exec build/qlassical.sif g++ -std=c++20 -O3 -I include -I /usr/include/eigen3 -fopenmp quick_start.cpp -o quick_start
+
+# Execute binary strictly through Apptainer
+apptainer exec build/qlassical.sif ./quick_start
+```
+
 ---
 
 ## 3. Efficiency, Memory, and Data-Oriented Design
@@ -293,7 +396,7 @@ Simulating an $N$-qubit quantum register requires tracking $2^N$ complex double-
 
 $$\text{Physical RAM Footprint} = 2^N \times 16 \text{ bytes}$$
 
-As problem scale increases, memory access patterns transition across distinct architectural tiers: from ultra-low-latency on-die L3 cache, through local DDR4 memory channels, until spilling past 26 qubits into remote NUMA nodes leading to a performance collapse known as the **Memory Wall**.
+As problem scale increases, memory access patterns transition across distinct architectural tiers: from ultra-low-latency on-die L3 cache, through local DDR4 memory channels (where L3 cache saturation past 25 qubits triggers memory controller bandwidth exhaustion), to inter-socket Infinity Fabric interconnect communication, demonstrating the physical boundaries of the **Memory Wall**.
 
 ### 6.3 The $k_{\text{safe}}$ Topology Threshold and `ThresholdCostModel`
 To prevent arbitrary cross-socket traffic during circuit execution, Qlassical implements hardware-topology-aware qubit windowing. Through `hwloc` topology inspection (`CPUHwlocTopology`), the simulator computes $k_{\text{safe}}$: the maximum number of logical qubits whose state vector partition fits entirely within the local RAM of a single NUMA socket:
@@ -376,29 +479,38 @@ The table below reports the real wall-clock execution times extracted directly f
 - **Fusion-Only (Config 2)**: `765 -> 76` operations (~90.1% compression via dense unitary fusion)
 - **Swap+Fusion (Config 3)**: `765 -> 85` operations (76 fused unitary blocks + 9 NUMA-aware SWAPs)
 
-### 7.3 In-Depth Performance Analysis
+### 7.3 In-Depth Performance Analysis: The True Memory Wall
 
-#### 1. The Memory Wall: Empirical Interconnect Transition (25 $\to$ 26 Qubits)
-A prominent inflection point in the empirical data occurs when transitioning from 25 to 26 qubits:
-- At 24 qubits (256 MB), the Baseline executes in **1,497 ms**. At 25 qubits (512 MB), the Baseline executes in **2,435 ms**—a modest $1.63\times$ increase, scaling sub-linearly relative to the doubling of state vector size due to cache reuse.
-- However, moving from 25 to 26 qubits (1.0 GB), Baseline execution time explodes from **2,435 ms to 37,282 ms**—a staggering **$15.31\times$ runtime penalty** for a single qubit increase ($2\times$ memory footprint).
+#### 1. The True Memory Wall: L3 Cache Saturation and Interconnect Breakdown (25 $\to$ 26 Qubits)
+A turning point in the empirical scaling data occurs when transitioning from 25 to 26 qubits:
+- At 24 qubits (256 MB), the Baseline executes in **1,497 ms**. At 25 qubits (512 MB), the Baseline executes in **2,435 ms**-a  $1.63\times$ runtime increase, scaling sub-linearly relative to the doubling of state vector size due to cache prefetching and multi-core cache reuse.
+- However, moving from 25 to 26 qubits (1.0 GB), Baseline execution time explodes from **2,435 ms to 37,282 ms**—a **$15.31\times$ runtime increase** for a single additional qubit ($2\times$ memory footprint).
 
-This discontinuity provides empirical proof of the **Memory Wall**. At $N \le 25$, memory allocations fit cleanly inside local socket RAM and on-die cache hierarchies. At $N = 26$, the working set exceeds single-socket boundaries. Un-optimized gate kernels repeatedly access memory across the inter-socket interconnect (AMD Infinity Fabric). Remote memory access latencies, cache coherence traffic, and interconnect serialization immediately dominate execution time over raw arithmetic throughput.
+##### Demystifying the Performance Cliff: Cache Hierarchy vs. Physical RAM Capacity
+A possible cause for this behaviour is **L3 Cache Saturation**:
+- **Zen 2 Cache Topology:** Each AMD EPYC 7H12 processor aggregates to **256 MB of L3 cache per physical socket** (512 MB across the dual-socket node).
+- **24 to 25 Qubits (256 MB $\to$ 512 MB):** At 24 qubits (256 MB), the state vector working set matches the 256 MB L3 cache limit of a single socket. At 25 qubits (512 MB), the working set is distributed across the dual-socket cache complex. Although minor cache thrashing begins at 25 qubits, the cache hit rate remains pretty high, preserving sub-linear $1.63\times$ scaling.
+- **26 Qubits (1.0 GB):** At 26 qubits, the working set expands to 1.0 GB, completely saturating the 256 MB physical L3 cache limit of the entire socket (and exceeding the 512 MB combined L3 capacity of the entire two-socket node by $2\times$).
+
+##### Consequence: Total L3 Thrashing and Memory Controller Saturation
+When the working set expands beyond the physical L3 capacity, the simulator triggers **total L3 cache thrashing**:
+1. **Direct DDR4 Access:** Every worker thread is often forced to access directly from DDR4 memory channels.
+2. **Memory Controller Saturation:** With 128 to 256 hardware threads simultaneously reading and updating memory addresses, memory bus traffic saturates the maximum theoretical bandwidth.
 
 #### 2. Fusion Compression: Eliminating Global Memory Sweeps
 Gate Fusion (Config 2) compresses the original 765 instructions into just **76 fused dense matrix blocks**, representing a **$10.07\times$ instruction reduction**.
 - In standard simulation, each single-qubit or two-qubit gate requires a full OpenMP parallel sweep over the multi-gigabyte state vector. Executing 765 gates requires 765 full memory sweeps, incurring immense memory-bus traffic and instruction dispatch overhead.
 - Gate Fusion merges adjacent gates on overlapping qubits into $2^k \times 2^k$ unitaries using stack-allocated Kronecker products (`FusionMath`). Applying a fused block requires only a single pass over memory, performing higher-density arithmetic per cache line loaded.
-- As a result, at 28 qubits, Fusion-Only slashes execution time from **169,314 ms down to 22,069 ms**—delivering a **$7.67\times$ speedup** by shifting the bottleneck away from memory-bus traversal and instruction dispatch.
+- As a result, at 28 qubits, Fusion-Only lowers execution time from **169,314 ms down to 22,069 ms**, delivering a **$7.67\times$ speedup**.
 
 #### 3. Hardware-Aware Synergy: The Counter-Intuitive Brilliance of Swap+Fusion
 The most remarkable result of the benchmark matrix lies in the comparison between Fusion-Only (Config 2) and Swap+Fusion (Config 3) at 28 qubits:
 - Config 2 executes **76 operations** in **22,069 ms**.
-- Config 3 executes **85 operations** in **21,018 ms** (a net speedup of **1,051 ms**).
+- Config 3 executes **85 operations** in **21,018 ms** (a speedup of **1,051 ms**).
 
 Under conventional algorithmic models, injecting 9 additional high-dimensional `GLOBAL_SWAP` permutations should degrade runtime. However, Swap+Fusion is the **fastest overall configuration**. 
 
-**Why?** In Config 2, the 76 fused operations still touch qubits that straddle NUMA domains, forcing dense matrix operations to repeatedly stall on remote socket memory access. In Config 3, the transpiler invests in 9 streaming `GLOBAL_SWAP` passes to permute the state vector, migrating active qubits into the local NUMA domain ($k_{\text{safe}}$). The subsequent 76 dense matrix applications execute with 100% local memory controller bandwidth. The latency savings across the 76 fused operations completely overshadow the computational cost of the 9 extra SWAPs, demonstrating the paramount importance of hardware-topology-aware optimization in HPC quantum simulation.
+**Why?** In Config 2, the 76 fused operations still touch qubits that straddle NUMA domains, forcing dense matrix operations to repeatedly stall on remote socket memory access. In Config 3, the transpiler invests in 9 streaming `GLOBAL_SWAP` passes to permute the state vector, migrating active qubits into the local NUMA domain ($k_{\text{safe}}$). The subsequent 76 dense matrix applications execute with 100% local memory controller bandwidth. The latency savings across the 76 fused operations pay back the computational cost of the 9 extra SWAPs.
 
 ### 7.4 Strong and Weak Scaling Profiles
 
@@ -408,11 +520,11 @@ The figure above illustrates both the linear strong scaling profile (up to the m
 
 - **Strong Scaling (Left Plot: Fixed 26-Qubit Workload across 1 to 112 Threads):**
   - **Linear Region (1 $\to$ 16 Threads):** Near-ideal linear speedup, progressing from $112,635 \text{ ms}$ (1 thread) to $7,823 \text{ ms}$ (16 threads)—achieving a **$14.40\times$ speedup** ($90.0\%$ parallel efficiency). In this regime, execution is compute-efficient and memory channels are not fully saturated.
-  - **Saturation Plateau (32 $\to$ 112 Threads):** Beyond 16 threads, speedup plateaus ($5,289 \text{ ms}$ at 32 threads, $5,117 \text{ ms}$ at 64 threads, and $4,791 \text{ ms}$ at 112 threads, peaking at $\sim 23.5\times$). Adding additional CPU cores gives diminishing returns because the memory controllers reach the physical saturation limit of the DDR4-3200 memory bus (>350 GB/s), empirically confirming that state vector simulation is memory-bandwidth bound.
+  - **Saturation Plateau (32 $\to$ 112 Threads):** Beyond 16 threads, speedup plateaus ($5,289 \text{ ms}$ at 32 threads, $5,117 \text{ ms}$ at 64 threads, and $4,791 \text{ ms}$ at 112 threads, peaking at $\sim 23.5\times$). Adding additional CPU cores gives diminishing returns because the memory controllers reach the physical saturation limit of the DDR4 memory bus, empirically confirming that state vector simulation is memory-bandwidth bound.
 
 - **Weak Scaling (Right Plot: Constant Memory Per Thread from 22 to 28 Qubits):**
   - Thread count is scaled proportionally with memory footprint: 1 thread at 22Q ($5,792 \text{ ms}$), 2 threads at 23Q ($6,640 \text{ ms}$), 4 threads at 24Q ($7,279 \text{ ms}$), 8 threads at 25Q ($7,598 \text{ ms}$), up to 16 threads at 26Q ($7,891 \text{ ms}$). Across this range, runtime remains remarkably flat and predictable.
-  - **Interconnect Scaling Jump (27 $\to$ 28 Qubits):** As the workload expands to 32 threads at 27Q ($10,674 \text{ ms}$) and 64 threads at 28Q ($21,685 \text{ ms}$), execution time experiences an exponential weak scaling spike. This jump visually confirms the exact transition where the state vector spills across physical NUMA sockets, incurring cross-socket Infinity Fabric latency.
+  - **Interconnect Scaling Jump (27 $\to$ 28 Qubits):** As the workload expands to 32 threads at 27Q ($10,674 \text{ ms}$) and 64 threads at 28Q ($21,685 \text{ ms}$), execution time experiences an exponential weak scaling spike.
 
 ---
 
@@ -420,41 +532,79 @@ The figure above illustrates both the linear strong scaling profile (up to the m
 
 The decoupled software architecture of Qlassical provides a direct foundation for distributed and heterogeneous HPC scaling:
 
-1. **MPI Multi-Node Engine (`MPIExecutionEngine`)**: The disembodied `StateVector` interface permits swapping `CPUStateVector` for an `MPIStateVector`. Amplitudes beyond $N_{\text{local}}$ are distributed across cluster nodes via RDMA (InfiniBand/RoCE), using `GLOBAL_SWAP` logic to schedule non-blocking `MPI_Isend` / `MPI_Irecv` exchange phases.
-2. **GPU Acceleration (`CUDAExecutionEngine` / `HIPExecutionEngine`)**: Because `GateInstr` streams are plain 16-byte structs and `UnitaryPool` matrices are contiguous arrays, the instruction stream can be uploaded directly to GPU constant memory (`__constant__`), dispatching CUDA/HIP bitwise kernels without modifying Frontend circuit builders or MiddleEnd transpiler passes.
+1. **MPI Multi-Node Engine (`MPIExecutionEngine`)**: The virtual `StateVector` interface allows swapping `CPUStateVector` for an `MPIStateVector`. Amplitudes beyond $N_{\text{local}}$ are distributed across cluster nodes, using `GLOBAL_SWAP` logic to schedule non-blocking `MPI_Isend` / `MPI_Irecv` exchange phases.
+2. **GPU Acceleration (`CUDAExecutionEngine` / `HIPExecutionEngine`)**: Because `GateInstr` streams are plain 16-byte structs and `UnitaryPool` matrices are contiguous arrays, the instruction stream can be uploaded directly to GPU constant memory (`__constant__`), dispatching CUDA bitwise kernels without modifying Frontend circuit builders or MiddleEnd transpiler passes.
 
 ---
 
 ## 9. Build and Installation
 
-### 9.1 Containerized Execution (Recommended)
-To run Qlassical inside an isolated Apptainer / Singularity environment:
+In High-Performance Computing (HPC) environments, software reproducibility and dependency isolation are paramount. To prevent dependency conflicts across heterogeneous cluster modules and guarantee exact toolchain compatibility (GCC 13.2, OpenMP 4.5, Eigen3 3.4, hwloc 2.10, Catch2 v3, Google Benchmark), Qlassical relies strictly on containerized builds via **Apptainer** (formerly Singularity).
+
+Below is the step-by-step terminal guide for compiling and executing Qlassical strictly through the containerized environment.
+
+### Step 1: Build the Container
+Build the immutable Singularity Image Format (`.sif`) image using the definition file provided in `containers/qlassical.def`:
 
 ```bash
-# Build the Apptainer image from definition file
 apptainer build qlassical.sif containers/qlassical.def
-
-# Run tests inside the container
-apptainer exec qlassical.sif ./build/test_backend
 ```
 
-### 9.2 Native Compilation
-
-**Prerequisites**: C++20 compiler (GCC 13+ or Clang 15+), CMake 3.22+ (CMake 3.28+ in container), OpenMP 4.5+, Eigen3 3.4+, hwloc 2.10+, Catch2 v3 (3.4+), Google Benchmark 1.8+.
+### Step 2: Prepare the Build Directory
+Create an isolated out-of-source `build` directory and move the `.sif` image inside it to maintain a clean root repository:
 
 ```bash
-# Clone repository
-git clone https://github.com/DanieleConfalonieri/Qlassical-Quantum-HPC-Simulator.git
-cd Qlassical-Quantum-HPC-Simulator
+mkdir -p build && mv qlassical.sif build/
+```
 
-# Configure build
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+### Step 3: CMake Configuration
+Navigate into the `build` directory and configure the project in `Release` mode *strictly through* the container:
 
-# Compile project binaries
-cmake --build build -j$(nproc)
+```bash
+cd build && apptainer exec qlassical.sif cmake .. -DCMAKE_BUILD_TYPE=Release
+```
 
-# Run complete Catch2 test suite
-ctest --test-dir build --output-on-failure
+### Step 4: Compilation
+Compile all interface libraries, unit test suites, and benchmark targets *strictly through* the container, maximizing parallel build throughput across all available hardware threads:
+
+```bash
+apptainer exec qlassical.sif make -j$(nproc)
+```
+
+### Step 5: Execution
+Execute the compiled binaries strictly through the container. The current working directory (`build/`) is mounted by default, allowing binaries to run with full access to containerized dynamic libraries and compiler runtime dependencies without host contamination.
+
+#### Run Unit and Integration Test Suites:
+```bash
+# Backend engine verification (state vector lifecycle, bitwise kernels, Born's rule collapse)
+apptainer exec qlassical.sif ./test_backend
+
+# Frontend IR and circuit builder verification
+apptainer exec qlassical.sif ./test_frontend
+
+# CircuitRunner multi-block orchestration and zero-copy state migration tests
+apptainer exec qlassical.sif ./test_circuit_runner
+
+# Middleware causality DAG and stack-allocated gate fusion tests
+apptainer exec qlassical.sif ./test_middleware
+
+# hwloc NUMA hardware topology discovery and safe qubit boundary tests
+apptainer exec qlassical.sif ./test_hw_topology
+
+# End-to-end quantum algorithm integration tests (Deutsch-Jozsa, Teleportation)
+apptainer exec qlassical.sif ./test_integration
+
+# Run the complete test suite via CTest
+apptainer exec qlassical.sif ctest --output-on-failure
+```
+
+#### Run Hardware-Aware Benchmarks:
+```bash
+# Hardware-awareness NUMA windowing benchmark matrix
+apptainer exec qlassical.sif ./bench_hw_awareness
+
+# Strong and weak memory-wall scaling benchmark suite
+apptainer exec qlassical.sif ./bench_scaling
 ```
 
 ---
