@@ -7,7 +7,6 @@
 //
 // Encapsulates the physical memory for exact state vector simulation.
 // The state |psi> is stored as a contiguous array of 2^n complex amplitudes
-// with 64-byte alignment (enforced by AlignedAllocator).
 
 #include <cmath>
 #include <complex>
@@ -18,7 +17,6 @@
 
 #include <omp.h>
 
-#include "aligned_allocator.hpp"
 #include "state_vector.hpp"
 
 namespace qlassical::backend {
@@ -29,7 +27,6 @@ namespace qlassical::backend {
         // Required Type Aliases
         // ----------------------
         using Amplitude  = std::complex<double>;
-        using AlignedVec = std::vector<Amplitude, AlignedAllocator<Amplitude, 64>>;
 
         // ------------
         // Constructors
@@ -58,7 +55,7 @@ namespace qlassical::backend {
             num_qubits_ = num_qubits;
             const std::size_t dim = static_cast<std::size_t>(1) << num_qubits;
 
-            // Allocate raw memory (AlignedAllocator guarantees 64-byte alignment).
+            // Allocate raw memory
             amplitudes_.resize(dim);
 
             // NUMA First-Touch Initialization:
@@ -134,7 +131,6 @@ namespace qlassical::backend {
         // -----------------------------------------
         // Usage:
         //   Eigen::Map<Eigen::VectorXcd> psi(sv.data(), sv.dimension());
-        // The pointer is guaranteed 64-byte aligned by our custom AlignedAllocator.
 
         [[nodiscard]] Amplitude* data() noexcept {
             return amplitudes_.data();
@@ -161,7 +157,7 @@ namespace qlassical::backend {
         }
 
     private:
-        AlignedVec amplitudes_;
+        std::vector<Amplitude> amplitudes_;
         uint32_t   num_qubits_ = 0;
     };
 

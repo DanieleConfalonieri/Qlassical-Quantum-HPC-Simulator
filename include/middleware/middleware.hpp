@@ -119,19 +119,6 @@ public:
 };
 
 // -------------------------------------------------------------
-// GreedyCostModel — Aggressive Qubit Windowing Evaluator
-// -------------------------------------------------------------
-//
-// Evicts any active qubit mapped outside the safe NUMA zone into
-// the safe zone by setting swap_penalty = 0.
-
-class GreedyCostModel : public ThresholdCostModel {
-public:
-  explicit GreedyCostModel(uint16_t safe_limit)
-      : ThresholdCostModel(safe_limit, 1, 0) {}
-};
-
-// -------------------------------------------------------------
 // GreedyCostModel - Aggressive Qubit Windowing Evaluator
 // -------------------------------------------------------------
 //
@@ -357,16 +344,6 @@ fuse_matrices(const GateMatrix &U1, std::span<const uint16_t> q1,
 }
 
 } // namespace FusionMath
-
-// -------------------------------------------------------------
-// CostModelType — Available Qubit Windowing Cost Model Strategies
-// -------------------------------------------------------------
-
-enum class CostModelType : uint8_t {
-  THRESHOLD = 0,
-  GREEDY    = 1,
-  CUSTOM    = 2
-};
 
 // -------------------------------------------------------------
 // CostModelType - Available Qubit Windowing Cost Model Strategies

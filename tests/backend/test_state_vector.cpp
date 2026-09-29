@@ -44,9 +44,4 @@ TEST_CASE("CPUStateVector initialization and reset", "[backend][statevector]") {
         REQUIRE_THAT(std::real(amps[0]), Catch::Matchers::WithinAbs(1.0, 1e-6));
         REQUIRE_THAT(std::real(amps[1]), Catch::Matchers::WithinAbs(0.0, 1e-6));
     }
-
-    SECTION("Data pointers are correctly 64-byte aligned") {
-        sv.initialize(4);
-        REQUIRE(reinterpret_cast<std::uintptr_t>(sv.data()) % 64 == 0);
-    }
 }
