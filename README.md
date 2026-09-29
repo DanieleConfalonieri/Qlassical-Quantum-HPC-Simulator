@@ -293,17 +293,6 @@ Simulating an $N$-qubit quantum register requires tracking $2^N$ complex double-
 
 $$\text{Physical RAM Footprint} = 2^N \times 16 \text{ bytes}$$
 
-The table below summarizes the physical memory requirements across key HPC architectural memory tiers:
-
-| Qubits ($N$) | Complex Amplitudes | Physical RAM Required | HPC Memory Hierarchy Tier | Hardware Characteristics & Bandwidth |
-|:---:|:---:|:---:|:---:|:---|
-| **20** | $1,048,576$ | **16 MB** | **L3 Cache** | Fits entirely inside CPU on-die L3 cache; peak memory bandwidth. |
-| **24** | $16,777,216$ | **256 MB** | **Local RAM** | Resides within the local NUMA socket's DDR4/DDR5 channels. |
-| **26** | $67,108,864$ | **1 GB** | **Local RAM Limit** | Reaches the boundary of a single NUMA domain's cacheable working set. |
-| **28** | $268,435,456$ | **4 GB** | **Cross-NUMA Interconnect Active** | State vector spans multiple NUMA domains. |
-| **30** | $1,073,741,824$ | **16 GB** | **Dual-Socket Saturation** | Saturares multiple NUMA nodes; heavy cross-socket bus contention. |
-| **32** | $4,294,967,296$ | **64 GB** | **Inter-Socket Bandwidth Bound** | Full node memory sweep per gate. |
-
 As problem scale increases, memory access patterns transition across distinct architectural tiers: from ultra-low-latency on-die L3 cache, through local DDR4 memory channels, until spilling past 26 qubits into remote NUMA nodes leading to a performance collapse known as the **Memory Wall**.
 
 ### 6.3 The $k_{\text{safe}}$ Topology Threshold and `ThresholdCostModel`
@@ -360,14 +349,14 @@ The $k_{\text{safe}}$ logic operates via three coordinated stages:
 
 ### 7.1 Benchmarking Methodology & Environment
 Empirical evaluation was conducted on the **Karolina Supercomputer** (IT4Innovations National Supercomputing Center):
-- **Compute Node Architecture**: Dual AMD EPYC 7H12 processors (128 physical cores per node, 2.6 GHz base frequency, 256 hardware threads, 8 NUMA domains across 2 sockets).
-- **Memory Subsystem**: 256 GB DDR4-3200 ECC RAM (32 GB per NUMA domain, providing ~350 GB/s peak aggregate memory bandwidth).
+- **Compute Node Architecture**: Dual AMD EPYC 7H12 processors (128 physical cores per node, 2.6 GHz base frequency, 256 hardware threads per node, 8 NUMA domains across 2 sockets).
+- **Memory Subsystem**: 256 GB DDR4 RAM (32 GB per NUMA domain).
 - **Toolchain & Software Stack**: GCC 13.2.0 (`-O3 -march=native -ffast-math`), OpenMP 4.5, Eigen3 3.4.0, hwloc 2.10.0, Catch2 3.4.0, Google Benchmark 1.8.3, CMake 3.28.3 (matching `containers/qlassical.def` on Ubuntu 24.04 LTS).
 
 ### 7.2 Empirical Benchmark Telemetry: 765-Gate Circuit Matrix
 To benchmark the interplay between hardware-aware transpilation and gate fusion, a clustered quantum circuit consisting of **765 gates** (depth 15 per cluster, cluster size 6) was evaluated from $N = 24$ to $N = 28$ qubits across four distinct configurations:
 1. **Baseline (Config 0)**: Un-optimized execution stream (raw gate dispatch, no HW awareness, no gate fusion).
-2. **SWAP-Only (Config 1)**: Hardware-aware NUMA windowing enabled (`enable_hw_awareness = true`, `k_safe = 18`), gate fusion disabled.
+2. **SWAP-Only (Config 1)**: Hardware-aware NUMA windowing enabled (`enable_hw_awareness = true`), gate fusion disabled.
 3. **Fusion-Only (Config 2)**: Gate fusion enabled (`enable_gate_fusion = true`), hardware-aware windowing disabled.
 4. **Swap+Fusion (Config 3)**: Combined hardware-aware SWAP windowing and stack-allocated gate fusion enabled.
 
