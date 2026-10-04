@@ -31,7 +31,9 @@ Modern implementations of openMP support range based for loops (as shoown at lec
 
 I need to understand how  `CircuitRunner::run()` works. Explain.
 
+middlewhare.hpp contains too much and unrelated stuff. Split it into several units that introduce specific functionalities.
 
+Il file indicato nel README non c'e`.
 
 ## Evaluation of the work
 
