@@ -52,9 +52,14 @@ namespace qlassical::backend {
         //
         // Throws std::bad_alloc if the system cannot satisfy the allocation.
         void initialize(uint32_t num_qubits) override {
+            // FEEDBACK [C2]: Check shift width and allocation limits before shifting;
+            // commit num_qubits_ only after successful allocation/initialization.
             num_qubits_ = num_qubits;
             const std::size_t dim = static_cast<std::size_t>(1) << num_qubits;
 
+            // FEEDBACK [E1]: vector::resize constructs/zeros complex elements on this
+            // thread before the parallel loop; this is not raw allocation or NUMA first touch.
+            // Use an explicit allocation/construction policy and verify placement and alignment.
             // Allocate raw memory
             amplitudes_.resize(dim);
 
@@ -100,6 +105,7 @@ namespace qlassical::backend {
             }
             
             // Floating point comparison with tolerance; avoid exact equality comparison
+            // FEEDBACK [C2]: Reject nonfinite norms explicitly; NaN bypasses this comparison.
             if (std::abs(norm_sq - 1.0) > 1e-6) {
                 throw std::invalid_argument(
                     "CPUStateVector: Provided state vector is not normalized (norm squared != 1.0).");

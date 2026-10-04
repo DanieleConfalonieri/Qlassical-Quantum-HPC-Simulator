@@ -175,6 +175,8 @@ namespace qlassical {
                             engine_ = std::move(engine);
                         } else {
                             // Intermediate block: Move state vector out for the next block
+                            // FEEDBACK [C4]: Retain one engine across blocks, or transfer its
+                            // measurement records and RNG state as well as its amplitudes.
                             previous_state = std::move(*engine).extract_state_vector();
                         }
                         break;

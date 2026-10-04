@@ -57,6 +57,8 @@ namespace qlassical::frontend {
         for (uint32_t i = 0; i < num_qubits; ++i) {
             qc.h(i);
             for (uint32_t j = i + 1; j < num_qubits; ++j) {
+                // FEEDBACK [C7]: QFT requires controlled phase rotations, not CNOTs.
+                // Implement those phases or rename this as a synthetic connectivity circuit.
                 qc.cx(j, i);
             }
         }

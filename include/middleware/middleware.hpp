@@ -85,6 +85,8 @@ public:
     // Iterate over all logical qubits to find one active in this window
     // but physically mapped outside the safe NUMA zone.
     for (std::size_t log_q = 0; log_q < window_frequencies.size(); ++log_q) {
+      // FEEDBACK [E2]: k_safe is a count: safe bit indices are [0, k_safe),
+      // so this comparison and the victim check below have an off-by-one mismatch.
       if (window_frequencies[log_q] > 0 && log_to_phys[log_q] > k_safe) {
         uint32_t retention = window_frequencies[log_q] * numa_penalty;
         if (retention >= swap_penalty && retention > max_retention) {
@@ -554,6 +556,8 @@ private:
               !is_fusable(dag.nodes[next].instr))
             continue;
 
+          // FEEDBACK [E3]: Use indexed membership marks for this block; repeated linear
+          // scans here and in causality checks become quadratic on long narrow circuits.
           bool already_in_block = false;
           for (auto n : block) {
             if (n == next) {
@@ -758,6 +762,8 @@ public:
   // -------------------------------------------------------------
   void pass_qubit_windowing(DAG &dag, const WindowingCostModel &cost_model,
                             uint32_t num_qubits) {
+    // FEEDBACK [C1]: Return the final mapping or append inverse physical swaps.
+    // A local mapping discarded at return cannot preserve logical output/block semantics.
     // Initialize identity bidirectional mapping between logical and physical qubits
     std::vector<uint16_t> log_to_phys(num_qubits);
     std::vector<uint16_t> phys_to_log(num_qubits);

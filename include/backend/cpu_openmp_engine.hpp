@@ -214,6 +214,8 @@ namespace qlassical::backend {
                     apply_measure(instr.qubits[0]);
                     break;
 
+                // FEEDBACK [C1]: Execute the physical permutation (e.g. apply_swap), and
+                // preserve/undo the final logical mapping in the transpiler before exposing state.
                 case GateType::GLOBAL_SWAP:
                     // Physical qubit permutation (streaming memory sweep)
                     break;
@@ -639,6 +641,8 @@ namespace qlassical::backend {
             // 4. Renormalize and collapse
             double p_outcome = outcome ? p1 : (1.0 - p1);
             
+            // FEEDBACK [C5]: Clamping a nonzero outcome probability changes the norm.
+            // Validate finite input and normalize using the actual selected subspace mass.
             // Numerical stability clamp
             if (p_outcome < 1e-12) {
                 p_outcome = 1e-12;

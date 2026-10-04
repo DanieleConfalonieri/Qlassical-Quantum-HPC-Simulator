@@ -339,6 +339,8 @@ namespace qlassical {
         /// The matrix is stored in the cold UnitaryPool; only the index is inlined.
         QuantumCircuit& unitary(std::span<const int16_t> target_qubits,
                                 std::span<const std::complex<double>> matrix) {
+            // FEEDBACK [C3]: Validate size_t length before narrowing, require distinct targets,
+            // and validate all targets before inserting a matrix into the pool.
             const auto k = static_cast<uint8_t>(target_qubits.size());
             if (k == 0 || k > 4) {
                 throw std::invalid_argument(
@@ -368,6 +370,8 @@ namespace qlassical {
 
         // Insert a scheduling barrier on the specified qubits.
         // An empty list means "barrier on all qubits".
+        // FEEDBACK [C6]: Represent global barriers explicitly in DAG dependencies; do not
+        // silently truncate explicit lists to four qubits or ignore their remaining indices.
         QuantumCircuit& barrier(std::initializer_list<int16_t> qubits = {}) {
             GateInstr instr = {};
             instr.type  = GateType::BARRIER;

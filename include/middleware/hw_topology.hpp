@@ -92,6 +92,8 @@ namespace qlassical::middleware {
             if (numa_nodes == 0) numa_nodes = 1; // Fallback to at least 1 NUMA node
         }
 
+        // FEEDBACK [S1]: Delete copying or use a unique RAII handle; implicit copying
+        // currently gives two owners of topology and causes double destruction.
         ~CPUHwlocTopology() override {
             // Ensure RAII principles
             hwloc_topology_destroy(topology);

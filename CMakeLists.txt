@@ -13,6 +13,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Release build type
 if (CMAKE_BUILD_TYPE STREQUAL "Release")
+    # FEEDBACK [S2]: Make native ISA and fast-math opt-in, target-scoped options;
+    # establish a strict floating-point reference build for numerical validation.
     add_compile_options(-O3 -march=native -ffast-math)
 endif()
 

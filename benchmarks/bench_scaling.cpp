@@ -102,6 +102,8 @@ static void BM_Weak_Scaling(benchmark::State& state) {
     // shift=0 -> 22Q, 1T
     // shift=1 -> 23Q, 2T
     // shift=2 -> 24Q, 4T, etc.
+    // FEEDBACK [E4]: This keeps amplitudes per thread constant, but the generated
+    // gate count also grows with qubits; report work per thread as well as memory.
     uint32_t num_qubits = 22 + shift;
     int num_threads = 1 << shift; 
 
