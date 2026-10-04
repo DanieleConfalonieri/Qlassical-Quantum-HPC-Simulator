@@ -58,8 +58,11 @@ namespace qlassical::backend {
             const std::size_t dim = static_cast<std::size_t>(1) << num_qubits;
 
             // FEEDBACK [E1]: vector::resize constructs/zeros complex elements on this
-            // thread before the parallel loop; this is not raw allocation or NUMA first touch.
-            // Use an explicit allocation/construction policy and verify placement and alignment.
+            // thread before the parallel loop; this is not raw allocation 
+            // If you meand raw allocation you should have used reserve() 
+            // and then used placement new in the parallel loop.
+            // but probably you want to use resize() and then parallelize the initialization loop, 
+            // which is what you are doing and your comment is wrong!
             // Allocate raw memory
             amplitudes_.resize(dim);
 
@@ -71,6 +74,8 @@ namespace qlassical::backend {
             //
             // schedule(static): deterministic partitioning ensures thread k always
             // owns the same index range, matching the partitioning used by gate kernels.
+            
+            // This static cast is useless. Use std::size_t directly.
             const auto dim_signed = static_cast<int64_t>(dim);
 
             #pragma omp parallel for schedule(static)

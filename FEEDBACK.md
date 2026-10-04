@@ -1,6 +1,37 @@
 # Scientific programming exam review
 
-Reviewed 4 October 2026; submitted revision `ec55f2b`; feedback branch `feedback`. Source changes in this review are comments only. Findings distinguish reproduced failures from static analysis. No numerical grade is assigned because no marking rubric was supplied.
+My commnets
+
+The code has several static casts between integers of different size, unigned and signed integer that I do not understand, for instance, why
+
+```c++
+ const auto dim_signed = static_cast<int64_t>(dim);
+
+            #pragma omp parallel for schedule(static)
+            for (int64_t i = 0; i < dim_signed; ++i) {
+                amplitudes_[static_cast<std::size_t>(i)] = Amplitude{0.0, 0.0};
+            }
+```
+and not simply
+```c++
+            #pragma omp parallel for schedule(static)
+            for (std::size_t i = 0u; i < dim; ++i) {
+                amplitudes_[i] = Amplitude{0.0, 0.0};
+            }
+```
+or, even simpler
+```c++
+            #pragma omp parallel for schedule(static)
+            for (auto & a:amplitudes) {
+                a=Amplitude{0.0, 0.0};
+            }
+```
+
+Modern implementations of openMP support range based for loops (as shoown at lecture).
+
+I need to understand how  `CircuitRunner::run()` works. Explain.
+
+
 
 ## Evaluation of the work
 
