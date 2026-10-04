@@ -341,7 +341,7 @@ namespace qlassical {
                                 std::span<const std::complex<double>> matrix) {
             // FEEDBACK [C3]: Validate size_t length before narrowing, require distinct targets,
             // and validate all targets before inserting a matrix into the pool.
-            const auto k = static_cast<uint x8_t>(target_qubits.size());
+            const auto k = static_cast<uint8_t>(target_qubits.size());
             if (k == 0 || k > 4) {
                 throw std::invalid_argument(
                     "unitary: arity must be 1–4, got " + std::to_string(k));
